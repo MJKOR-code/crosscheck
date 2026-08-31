@@ -216,8 +216,8 @@
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <select id="claudeModelInput" title="Claude 모델" style="width:auto;">
+              <option value="claude-haiku-4-5-20251001" selected>Claude Haiku 4.5 (저렴·빠름)</option>
               <option value="claude-sonnet-4-6">Claude Sonnet (정확·고품질)</option>
-              <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (저렴·빠름)</option>
             </select>
             <input type="text" id="modelInput" value="gemini-3.6-flash" style="width:150px;" title="Gemini 모델명" />
             <button class="gear-btn" id="resetKeysBtn">⚙ 키 초기화</button>
@@ -261,6 +261,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const MAX_ROUNDS = 5;
+const SEARCH_INSTRUCTION = `\n\n중요: 당신의 학습 데이터는 최신이 아닐 수 있습니다. 질문에 최근 사건, 최신 수치·가격·통계, 현재 상태(정책·법규·직책·시세 등)가 조금이라도 관련된다면, 답변하기 전에 반드시 웹 검색으로 먼저 확인하세요. 확실하지 않으면 무조건 검색하는 쪽을 택하세요.`;
 const loadingHTML = () => '<span class="loading-dots"><span></span><span></span><span></span></span>';
 const LS_KEY = 'crosscheck_keys_v1';
 const LS_THREADS = 'crosscheck_threads_v2';
@@ -359,7 +360,7 @@ function init(){
     $('setupScreen').classList.add('hidden');
     $('mainScreen').classList.remove('hidden');
     $('modelInput').value = k.geminiModel || 'gemini-3.6-flash';
-    $('claudeModelInput').value = k.claudeModel || 'claude-sonnet-4-6';
+    $('claudeModelInput').value = k.claudeModel || 'claude-haiku-4-5-20251001';
     renderThreadList();
     showRecoveryBanner();
   }else{
@@ -775,7 +776,7 @@ async function callClaude(promptText, anthropicKey, images, model){
   });
   content.push({ type:'text', text: promptText });
   const body = JSON.stringify({
-    model: model || 'claude-sonnet-4-6',
+    model: model || 'claude-haiku-4-5-20251001',
     max_tokens:8192,
     messages:[{ role:'user', content }],
     tools:[{ type:'web_search_20250305', name:'web_search' }]
@@ -939,7 +940,7 @@ function parseTargetedFollowup(text){
 async function runTargetedQuestion(target, subQuestion, images){
   const keys = loadStoredKeys();
   const model = $('modelInput').value.trim() || 'gemini-3.6-flash';
-  const claudeModel = $('claudeModelInput').value || 'claude-sonnet-4-6';
+  const claudeModel = $('claudeModelInput').value || 'claude-haiku-4-5-20251001';
   if(!keys || !keys.claudeKey || !keys.geminiKey){ showRunError('API 키가 없습니다. 키 초기화 후 다시 입력해주세요.'); return; }
 
   busy = true;
@@ -972,7 +973,7 @@ async function runTargetedQuestion(target, subQuestion, images){
 
   try{
     const contextBlock = conversationContext ? `\n\n[지금까지의 논의 요약]\n${conversationContext}\n(참고: 이 중 일부는 두 모델이 아니라 한쪽 모델에게만 개별적으로 물어봤던 질문/답변일 수 있습니다.)\n` : '';
-    const prompt = `${contextBlock}\n질문: "${subQuestion}"\n\n위 질문에 답하세요.`;
+    const prompt = `${contextBlock}\n질문: "${subQuestion}"\n\n위 질문에 답하세요.${SEARCH_INSTRUCTION}`;
     const caller = target === 'gemini'
       ? (p)=>callGeminiFull(p, keys.geminiKey, model, images)
       : (p)=>callClaudeFull(p, keys.claudeKey, images, claudeModel);
@@ -1130,7 +1131,7 @@ function attachContinueHandler(continueWrap){
 async function runSession(questionText, images){
   const keys = loadStoredKeys();
   const model = $('modelInput').value.trim() || 'gemini-3.6-flash';
-  const claudeModel = $('claudeModelInput').value || 'claude-sonnet-4-6';
+  const claudeModel = $('claudeModelInput').value || 'claude-haiku-4-5-20251001';
   if(!keys || !keys.claudeKey || !keys.geminiKey){ showRunError('API 키가 없습니다. 키 초기화 후 다시 입력해주세요.'); return; }
 
   busy = true;
@@ -1179,7 +1180,7 @@ async function runSession(questionText, images){
     const cLoad = addBubble(initCCol, boyAvatarSmall, true);
     const gLoad = addBubble(initGCol, girlAvatarSmall, true);
 
-    const initialPrompt = `${contextBlock}\n질문: "${questionText}"\n\n위 질문에 답하세요.${conversationContext ? ' 이전 논의 내용과 모순되지 않도록 참고하되, 새로운 질문에 집중해서 답하세요.' : ''}`;
+    const initialPrompt = `${contextBlock}\n질문: "${questionText}"\n\n위 질문에 답하세요.${conversationContext ? ' 이전 논의 내용과 모순되지 않도록 참고하되, 새로운 질문에 집중해서 답하세요.' : ''}${SEARCH_INSTRUCTION}`;
     const [claudeResult, geminiResult] = await withInlineRetry(sessionBlock, ()=> Promise.all([
       callClaudeFull(initialPrompt, keys.claudeKey, images, claudeModel),
       callGeminiFull(initialPrompt, keys.geminiKey, model, images)
@@ -1206,8 +1207,8 @@ async function runSession(questionText, images){
 
       const scopeInstruction = `\n\n【지적 범위 제한 — 반드시 지키세요】\n당신의 역할은 오직 "검증 가능한 사실(숫자, 날짜, 통계, 법령/규정, 인용문, 계산 결과 등)"의 정오만 확인하는 것입니다.\n\n허용되는 지적: 특정 수치가 틀렸다 / 날짜·기간이 틀렸다 / 인용한 조항·문서 내용이 실제와 다르다 / 계산이 틀렸다 / 존재하지 않는 사실을 지어냈다 — 이런 지적은 반드시 "무엇이 왜 틀렸는지" 구체적 근거(정확한 수치나 출처)와 함께 제시하세요.\n\n금지되는 지적 (사실 오류가 아니면 절대 언급하지 마세요): 상대방의 논조·어투·태도 / 이전 발언과의 "일관성" 문제 / "논리적 비약"이라는 표현으로 뭉뚱그린 비판 / "이 주장은 변명처럼 들린다"류의 인상 비평 / 강조점이나 관점의 차이 / 표현 방식이나 설득력 평가. 이런 것들은 사실관계와 무관하므로 지적 대상이 아닙니다.\n\n검증할 구체적인 사실 오류를 찾지 못했다면, 억지로 트집 잡지 말고 "사실관계상 지적할 부분이 없다"고 명시하세요.\n\n【핵심 쟁점 vs 지엽적 오류 구분 — 중요】\n지적하는 사실 오류가 (a) 질문의 핵심 결론에 직접 영향을 주는 "핵심 쟁점"인지, (b) 결론에는 영향이 없는 지엽적·주변적 오류(예: 본문 논지와 무관한 부수적 수치, 사소한 오탈자성 사실 오류 등)인지 구분해서 "[핵심]" 또는 "[지엽]" 태그를 붙여 표시하세요. 지엽적 오류는 여전히 지적은 하되, 그것 하나 때문에 이야기가 곁가지로 새거나 합의를 거부하는 근거로 쓰지 마세요.`;
       const agreementInstruction = `\n\n중요: [합의: 예]로 표시하려면 다음을 모두 만족해야 합니다:\n1. 핵심 수치·날짜·사실관계를 최소 하나 이상 구체적으로 재검증했다 (왜 맞는지 근거를 제시할 것, 단순 동의 금지).\n2. 질문의 핵심 결론에 영향을 주는 "핵심" 사실 오류가 남아있지 않다.\n합의 판단은 오직 [핵심] 오류 기준으로만 하세요. [지엽] 오류가 남아있어도, 그것이 핵심 결론에 영향을 주지 않는다면 [합의: 예]로 표시할 수 있습니다 (단, 지적한 지엽적 오류 내용은 최종 입장에 그대로 남겨두세요). 핵심 사실 오류가 남아있을 때만 [합의: 아니오]로 표시하고, 정확히 어떤 핵심 사실이 더 검증되어야 하는지 짧게 명시하세요. 검토가 끝나면 맨 마지막 줄에 정확히 다음 형식으로만 표시하세요 (다른 텍스트 없이): [합의: 예] 또는 [합의: 아니오]`;
-      const claudePrompt = `다음은 같은 질문에 대한 다른 AI(Gemini)의 최신 답변입니다. (라운드 ${round})\n\n질문: "${questionText}"\n\n[Gemini의 최신 답변]\n${geminiCurrent}\n\n[당신(Claude)의 최신 답변]\n${claudeCurrent}\n\nGemini 답변의 핵심 수치·사실관계를 하나하나 직접 검증하세요. 반대로 Gemini 답변이 더 정확한 부분이 있다면 그 근거를 확인한 뒤 인정하고 당신의 답을 수정하세요. "최종 입장: " 뒤에 확정된 답을 간결히 제시하세요.${scopeInstruction}${agreementInstruction}`;
-      const geminiPrompt = `다음은 같은 질문에 대한 다른 AI(Claude)의 최신 답변입니다. (라운드 ${round})\n\n질문: "${questionText}"\n\n[Claude의 최신 답변]\n${claudeCurrent}\n\n[당신(Gemini)의 최신 답변]\n${geminiCurrent}\n\nClaude 답변의 핵심 수치·사실관계를 하나하나 직접 검증하세요. 반대로 Claude 답변이 더 정확한 부분이 있다면 그 근거를 확인한 뒤 인정하고 당신의 답을 수정하세요. "최종 입장: " 뒤에 확정된 답을 간결히 제시하세요.${scopeInstruction}${agreementInstruction}`;
+      const claudePrompt = `다음은 같은 질문에 대한 다른 AI(Gemini)의 최신 답변입니다. (라운드 ${round})\n\n질문: "${questionText}"\n\n[Gemini의 최신 답변]\n${geminiCurrent}\n\n[당신(Claude)의 최신 답변]\n${claudeCurrent}\n\nGemini 답변의 핵심 수치·사실관계를 하나하나 직접 검증하세요. 반대로 Gemini 답변이 더 정확한 부분이 있다면 그 근거를 확인한 뒤 인정하고 당신의 답을 수정하세요. "최종 입장: " 뒤에 확정된 답을 간결히 제시하세요.${SEARCH_INSTRUCTION}${scopeInstruction}${agreementInstruction}`;
+      const geminiPrompt = `다음은 같은 질문에 대한 다른 AI(Claude)의 최신 답변입니다. (라운드 ${round})\n\n질문: "${questionText}"\n\n[Claude의 최신 답변]\n${claudeCurrent}\n\n[당신(Gemini)의 최신 답변]\n${geminiCurrent}\n\nClaude 답변의 핵심 수치·사실관계를 하나하나 직접 검증하세요. 반대로 Claude 답변이 더 정확한 부분이 있다면 그 근거를 확인한 뒤 인정하고 당신의 답을 수정하세요. "최종 입장: " 뒤에 확정된 답을 간결히 제시하세요.${SEARCH_INSTRUCTION}${scopeInstruction}${agreementInstruction}`;
 
       const [claudeCritique, geminiCritique] = await withInlineRetry(sessionBlock, ()=> Promise.all([
         callClaudeFull(claudePrompt, keys.claudeKey, images, claudeModel),
@@ -1248,7 +1249,7 @@ async function runSession(questionText, images){
     const note = consensusReached
       ? `두 모델은 ${roundsRun}라운드 만에 합의에 도달했습니다.`
       : `${MAX_ROUNDS}라운드 동안 토론했지만 완전한 합의에는 이르지 못했습니다. 남은 이견을 명확히 밝혀주세요.`;
-    const synthesisPrompt = `${contextBlock}\n다음은 같은 질문에 대해 Claude와 Gemini가 여러 라운드에 걸쳐 검토한 최종 입장입니다. ${note}\n\n질문: "${questionText}"\n\n[Claude의 최종 입장]\n${claudeCurrent}\n\n[Gemini의 최종 입장]\n${geminiCurrent}\n\n두 입장을 종합해서 사용자에게 줄 최종 답변을 작성하세요. 합의된 내용 중심으로 답하고, 남은 이견이 있으면 마지막에 짧게 명시하세요. 메타 설명 없이 바로 답으로 시작하세요.`;
+    const synthesisPrompt = `${contextBlock}\n다음은 같은 질문에 대해 Claude와 Gemini가 여러 라운드에 걸쳐 검토한 최종 입장입니다. ${note}\n\n질문: "${questionText}"\n\n[Claude의 최종 입장]\n${claudeCurrent}\n\n[Gemini의 최종 입장]\n${geminiCurrent}\n\n두 입장을 종합해서 사용자에게 줄 최종 답변을 작성하세요. 합의된 내용 중심으로 답하고, 남은 이견이 있으면 마지막에 짧게 명시하세요. 메타 설명 없이 바로 답으로 시작하세요.${SEARCH_INSTRUCTION}`;
 
     const finalResult = await withInlineRetry(sessionBlock, ()=> callClaudeFull(synthesisPrompt, keys.claudeKey, null, claudeModel));
     const finalTxtEl = finalBox.querySelector('.body');
