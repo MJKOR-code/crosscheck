@@ -137,6 +137,7 @@
   .charcol.gemini .bubble{border-top-right-radius:4px;border-color:#20293a;}
   .bubble .round-tag{display:block;font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;}
   .bubble .round-tag.agree{color:var(--agree);}
+  .search-tag{margin-top:8px;font-family:var(--mono);font-size:9.5px;color:var(--final);opacity:.85;line-height:1.5;padding-top:6px;border-top:1px dashed var(--line);}
   .inline-continue-btn{
     display:inline-flex;align-items:center;gap:4px;margin-top:8px;background:var(--panel-2);
     border:1px solid var(--final-dim);color:var(--final);border-radius:99px;padding:4px 11px;
@@ -738,6 +739,16 @@ async function withInlineRetry(container, taskFn){
   }
 }
 
+// 실제로 검색을 수행했다면 그 검색어를 말풍선 안에 작게 표시한다 (검색 여부를 눈으로 바로 확인 가능하게)
+function addSearchTag(bubbleEl, queries){
+  if(!queries || queries.length === 0) return;
+  const tag = document.createElement('div');
+  tag.className = 'search-tag';
+  const uniq = [...new Set(queries)];
+  tag.textContent = `🔍 검색함: ${uniq.join(' · ')}`;
+  bubbleEl.appendChild(tag);
+}
+
 function setupContinueButton(containerEl, txtEl, caller){
   function addBtn(){
     const btn = document.createElement('button');
@@ -802,7 +813,10 @@ async function callClaude(promptText, anthropicKey, images, model){
   }
   const data = await res.json();
   const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
-  return { text, truncated: data.stop_reason === 'max_tokens' };
+  const searchedQueries = (data.content||[])
+    .filter(b=>b.type==='server_tool_use' && b.name==='web_search')
+    .map(b=>b.input && b.input.query).filter(Boolean);
+  return { text, truncated: data.stop_reason === 'max_tokens', searchedQueries };
 }
 function buildGenerationConfig(model){
   const cfg = { maxOutputTokens: 8192 };
@@ -861,7 +875,8 @@ async function callGemini(promptText, apiKey, model, images){
   const cand = data.candidates && data.candidates[0];
   const parts2 = (cand && cand.content && cand.content.parts) || [];
   const text = parts2.map(p=>p.text||'').join('\n').trim() || '(빈 응답)';
-  return { text, truncated: cand && cand.finishReason === 'MAX_TOKENS' };
+  const searchedQueries = (cand && cand.groundingMetadata && cand.groundingMetadata.webSearchQueries) || [];
+  return { text, truncated: cand && cand.finishReason === 'MAX_TOKENS', searchedQueries };
 }
 
 function buildContinuationPrompt(currentText){
@@ -873,24 +888,28 @@ const MAX_AUTO_CONTINUES = 4;
 async function callClaudeFull(promptText, anthropicKey, images, model){
   let result = await callClaude(promptText, anthropicKey, images, model);
   let fullText = result.text;
+  let allQueries = (result.searchedQueries || []).slice();
   let tries = 0;
   while(result.truncated && tries < MAX_AUTO_CONTINUES){
     result = await callClaude(buildContinuationPrompt(fullText), anthropicKey, images, model);
     fullText += result.text;
+    allQueries = allQueries.concat(result.searchedQueries || []);
     tries++;
   }
-  return { text: fullText, truncated: result.truncated };
+  return { text: fullText, truncated: result.truncated, searchedQueries: allQueries };
 }
 async function callGeminiFull(promptText, apiKey, model, images){
   let result = await callGemini(promptText, apiKey, model, images);
   let fullText = result.text;
+  let allQueries = (result.searchedQueries || []).slice();
   let tries = 0;
   while(result.truncated && tries < MAX_AUTO_CONTINUES){
     result = await callGemini(buildContinuationPrompt(fullText), apiKey, model, images);
     fullText += result.text;
+    allQueries = allQueries.concat(result.searchedQueries || []);
     tries++;
   }
-  return { text: fullText, truncated: result.truncated };
+  return { text: fullText, truncated: result.truncated, searchedQueries: allQueries };
 }
 
 // ---------- 화면 꺼짐 방지 (진행 중일 때만) ----------
@@ -981,6 +1000,7 @@ async function runTargetedQuestion(target, subQuestion, images){
     const result = await withInlineRetry(sessionBlock, ()=> caller(prompt));
     const txtEl = loadRow.querySelector('.txt');
     txtEl.textContent = result.text;
+    addSearchTag(loadRow.querySelector('.bubble'), result.searchedQueries);
     if(result.truncated) setupContinueButton(loadRow.querySelector('.bubble'), txtEl, caller);
 
     conversationContext += `\n[개별 질문 - ${targetLabel}에게만] ${subQuestion}\n[${targetLabel} 답변] ${result.text}\n`;
@@ -1190,6 +1210,8 @@ async function runSession(questionText, images){
     const gTxtEl = gLoad.querySelector('.txt');
     cTxtEl.textContent = claudeResult.text;
     gTxtEl.textContent = geminiResult.text;
+    addSearchTag(cLoad.querySelector('.bubble'), claudeResult.searchedQueries);
+    addSearchTag(gLoad.querySelector('.bubble'), geminiResult.searchedQueries);
     if(claudeResult.truncated) setupContinueButton(cLoad.querySelector('.bubble'), cTxtEl, (p)=>callClaudeFull(p, keys.claudeKey, images, claudeModel));
     if(geminiResult.truncated) setupContinueButton(gLoad.querySelector('.bubble'), gTxtEl, (p)=>callGeminiFull(p, keys.geminiKey, model, images));
     autosaveCurrent();
@@ -1224,6 +1246,8 @@ async function runSession(questionText, images){
       cRow.querySelector('.txt').textContent = claudeText;
       gRow.querySelector('.bubble').innerHTML = `<span class="round-tag ${geminiAgree?'agree':''}">라운드 ${round+1}${geminiAgree!==null ? (geminiAgree?' · 합의':' · 이견') : ''}</span><span class="txt"></span>`;
       gRow.querySelector('.txt').textContent = geminiText;
+      addSearchTag(cRow.querySelector('.bubble'), claudeCritique.searchedQueries);
+      addSearchTag(gRow.querySelector('.bubble'), geminiCritique.searchedQueries);
 
       if(claudeCritique.truncated) setupContinueButton(cRow.querySelector('.bubble'), cRow.querySelector('.txt'), (p)=>callClaudeFull(p, keys.claudeKey, images, claudeModel));
       if(geminiCritique.truncated) setupContinueButton(gRow.querySelector('.bubble'), gRow.querySelector('.txt'), (p)=>callGeminiFull(p, keys.geminiKey, model, images));
@@ -1254,6 +1278,7 @@ async function runSession(questionText, images){
     const finalResult = await withInlineRetry(sessionBlock, ()=> callClaudeFull(synthesisPrompt, keys.claudeKey, null, claudeModel));
     const finalTxtEl = finalBox.querySelector('.body');
     finalTxtEl.textContent = finalResult.text;
+    addSearchTag(finalBox, finalResult.searchedQueries);
     if(finalResult.truncated) setupContinueButton(finalBox, finalTxtEl, (p)=>callClaudeFull(p, keys.claudeKey, null, claudeModel));
 
     conversationContext += `\n[세션 ${sessionCount} 질문] ${questionText}\n[세션 ${sessionCount} 결론] ${finalResult.text}\n`;
