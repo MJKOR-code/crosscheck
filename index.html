@@ -62,10 +62,6 @@
   .thread-item:hover .trash-btn{opacity:1;}
   .trash-btn:hover{color:var(--danger);background:rgba(217,122,122,.12);}
   .empty-hint{font-family:var(--mono);font-size:10.5px;color:var(--text-dim);padding:8px 4px;line-height:1.7;}
-  .sync-box{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px;}
-  .sync-hint{font-family:var(--mono);font-size:10px;color:var(--text-dim);line-height:1.6;margin:4px 0 8px;}
-  .sync-box textarea{font-size:10px;}
-  .sync-user{font-family:var(--mono);font-size:10.5px;color:var(--agree);word-break:break-all;padding:4px 2px;}
 
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(8,9,12,.65);align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(2px);}
   .modal-overlay.show{display:flex;}
@@ -185,9 +181,6 @@
     *{transition:none !important;}
   }
 </style>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
 </head>
 <body>
@@ -208,27 +201,6 @@
   <div class="layout">
     <aside class="sidebar">
       <button class="new-thread-btn" id="newThreadBtn">＋ 새 토론 생성</button>
-
-      <div class="sync-box" id="syncBoxSetup">
-        <div class="sidebar-label">☁ 클라우드 동기화</div>
-        <p class="sync-hint">Firebase 프로젝트 설정을 붙여넣으면 여러 기기에서 같은 토론 목록을 볼 수 있어요.</p>
-        <textarea id="firebaseConfigInput" placeholder='{"apiKey": "...", "authDomain": "...", ...}' style="min-height:70px;"></textarea>
-        <button class="gear-btn" id="saveFirebaseConfigBtn" style="width:100%;margin-top:6px;">설정 저장</button>
-        <div class="error-msg hidden" id="syncError"></div>
-      </div>
-
-      <div class="sync-box hidden" id="syncBoxLogin">
-        <div class="sidebar-label">☁ 클라우드 동기화</div>
-        <button class="gear-btn" id="googleSignInBtn" style="width:100%;">Google로 로그인</button>
-        <button class="gear-btn" id="clearFirebaseConfigBtn" style="width:100%;margin-top:6px;">설정 초기화</button>
-      </div>
-
-      <div class="sync-box hidden" id="syncBoxUser">
-        <div class="sidebar-label">☁ 동기화 중</div>
-        <div class="sync-user" id="syncUserEmail"></div>
-        <button class="gear-btn" id="signOutBtn" style="width:100%;margin-top:6px;">로그아웃</button>
-      </div>
-
       <div class="sidebar-label">저장된 토론</div>
       <div class="thread-list" id="threadList"></div>
     </aside>
@@ -322,92 +294,6 @@ function loadStoredKeys(){ try{ return JSON.parse(localStorage.getItem(LS_KEY) |
 function saveStoredKeys(keys){ localStorage.setItem(LS_KEY, JSON.stringify(keys)); }
 function clearStoredKeys(){ localStorage.removeItem(LS_KEY); }
 
-// ---------- 클라우드 동기화 (Firebase) ----------
-const LS_FIREBASE_CONFIG = 'crosscheck_firebase_config_v1';
-let fbApp = null, fbAuth = null, fbDb = null, fbUser = null;
-
-function loadFirebaseConfig(){
-  try{ return JSON.parse(localStorage.getItem(LS_FIREBASE_CONFIG) || 'null'); }catch(e){ return null; }
-}
-function saveFirebaseConfig(cfg){ localStorage.setItem(LS_FIREBASE_CONFIG, JSON.stringify(cfg)); }
-function clearFirebaseConfig(){ localStorage.removeItem(LS_FIREBASE_CONFIG); }
-
-function initFirebase(cfg){
-  if(fbApp) return; // 이미 초기화됨
-  fbApp = firebase.initializeApp(cfg);
-  fbAuth = firebase.auth();
-  fbDb = firebase.firestore();
-  fbAuth.onAuthStateChanged(async (user)=>{
-    fbUser = user;
-    renderSyncBoxes();
-    if(user){
-      // 로그인되면 클라우드에 있는 토론 목록을 받아와서 이 기기 것을 덮어쓴다.
-      try{
-        const doc = await fbDb.collection('users').doc(user.uid).get();
-        if(doc.exists && Array.isArray(doc.data().threads)){
-          saveThreadsLocal(doc.data().threads);
-          renderThreadList();
-        }
-      }catch(e){
-        console.warn('클라우드 토론 목록을 불러오지 못했습니다:', e);
-      }
-    }
-  });
-}
-
-function renderSyncBoxes(){
-  const cfg = loadFirebaseConfig();
-  $('syncBoxSetup').classList.toggle('hidden', !!cfg);
-  $('syncBoxLogin').classList.toggle('hidden', !(cfg && !fbUser));
-  $('syncBoxUser').classList.toggle('hidden', !fbUser);
-  if(fbUser) $('syncUserEmail').textContent = fbUser.email || fbUser.displayName || fbUser.uid;
-}
-
-async function pushThreadsToCloud(list){
-  if(!fbUser || !fbDb) return;
-  try{
-    await fbDb.collection('users').doc(fbUser.uid).set({ threads: list, updatedAt: Date.now() });
-  }catch(e){
-    console.warn('클라우드 동기화 실패:', e);
-  }
-}
-
-$('saveFirebaseConfigBtn').addEventListener('click', ()=>{
-  const raw = $('firebaseConfigInput').value.trim();
-  const errEl = $('syncError');
-  errEl.classList.add('hidden');
-  let cfg;
-  try{ cfg = JSON.parse(raw); }catch(e){ errEl.textContent = 'JSON 형식이 올바르지 않아요. Firebase 콘솔에서 복사한 설정 객체를 그대로 붙여넣어주세요.'; errEl.classList.remove('hidden'); return; }
-  if(!cfg.apiKey || !cfg.projectId){ errEl.textContent = 'apiKey, projectId 등이 포함된 Firebase 설정 객체가 맞는지 확인해주세요.'; errEl.classList.remove('hidden'); return; }
-  saveFirebaseConfig(cfg);
-  initFirebase(cfg);
-  renderSyncBoxes();
-});
-
-$('googleSignInBtn').addEventListener('click', async ()=>{
-  if(!fbAuth) return;
-  try{
-    await fbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
-  }catch(e){
-    alert('로그인 실패: ' + e.message);
-  }
-});
-
-$('signOutBtn').addEventListener('click', ()=>{
-  if(fbAuth) fbAuth.signOut();
-});
-
-$('clearFirebaseConfigBtn').addEventListener('click', ()=>{
-  if(!confirm('클라우드 동기화 설정을 삭제할까요? (저장된 토론 자체는 지워지지 않아요)')) return;
-  clearFirebaseConfig();
-  location.reload();
-});
-
-(function bootFirebaseIfConfigured(){
-  const cfg = loadFirebaseConfig();
-  if(cfg) initFirebase(cfg);
-})();
-
 function init(){
   const k = loadStoredKeys();
   if(k && k.claudeKey && k.geminiKey){
@@ -415,7 +301,6 @@ function init(){
     $('mainScreen').classList.remove('hidden');
     $('modelInput').value = k.geminiModel || 'gemini-3.6-flash';
     renderThreadList();
-    renderSyncBoxes();
   }else{
     $('setupScreen').classList.remove('hidden');
     $('mainScreen').classList.add('hidden');
@@ -442,7 +327,7 @@ $('resetKeysBtn').addEventListener('click', ()=>{
 // ---------- 토론(스레드) 저장/목록/삭제 ----------
 function loadThreads(){ try{ return JSON.parse(localStorage.getItem(LS_THREADS) || '[]'); }catch(e){ return []; } }
 function saveThreadsLocal(list){ localStorage.setItem(LS_THREADS, JSON.stringify(list)); }
-function saveThreads(list){ saveThreadsLocal(list); pushThreadsToCloud(list); }
+function saveThreads(list){ saveThreadsLocal(list); }
 function makeId(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2)); }
 
 function currentHasContent(){
