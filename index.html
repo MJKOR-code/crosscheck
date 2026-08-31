@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cross-Check Lab</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  :root{
+    --bg:#0f1115; --panel:#171a20; --panel-2:#1d2129; --panel-3:#232833; --line:#262b34; --line-soft:#1e222a;
+    --text:#eae7e0; --text-dim:#8c93a1;
+    --claude:#c17a45; --claude-soft:rgba(193,122,69,.14);
+    --gemini:#5b93c4; --gemini-soft:rgba(91,147,196,.14);
+    --final:#b79add; --final-dim:#4a3d63; --final-soft:rgba(183,154,221,.12);
+    --agree:#6fb98f; --danger:#d97a7a;
+    --mono: 'JetBrains Mono', ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: 'Inter', -apple-system, "Pretendard Variable", "Apple SD Gothic Neo", system-ui, sans-serif;
+    --serif: 'Fraunces', Georgia, "Apple SD Gothic Neo", serif;
+    --shadow-sm: 0 2px 8px rgba(0,0,0,.22);
+    --shadow-md: 0 8px 28px rgba(0,0,0,.32);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased;}
+  .hidden{display:none !important;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:26px;box-shadow:var(--shadow-sm);}
+  input[type=password],input[type=text],textarea{
+    background:var(--panel-2);border:1px solid var(--line);border-radius:10px;color:var(--text);
+    font-family:var(--mono);font-size:12.5px;padding:10px 12px;outline:none;width:100%;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  input[type=password]:focus,input[type=text]:focus,textarea:focus{border-color:#3a4150;box-shadow:0 0 0 3px rgba(183,154,221,.08);}
+  textarea{font-family:var(--sans);font-size:14.5px;line-height:1.55;resize:vertical;min-height:60px;}
+  .primary-btn{
+    background:var(--final);color:#1b1420;border:none;border-radius:10px;padding:11px 20px;
+    font-weight:700;font-size:13.5px;cursor:pointer;white-space:nowrap;letter-spacing:.01em;
+    box-shadow:0 6px 18px rgba(183,154,221,.22);transition:transform .12s ease, box-shadow .12s ease, opacity .12s;
+  }
+  .primary-btn:hover{transform:translateY(-1px);box-shadow:0 10px 22px rgba(183,154,221,.3);}
+  .primary-btn:active{transform:translateY(0);}
+  .primary-btn:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none;}
+  .error-msg{font-family:var(--mono);font-size:12px;color:var(--danger);margin-top:10px;padding:8px 11px;background:rgba(217,122,122,.08);border:1px solid rgba(217,122,122,.25);border-radius:8px;}
+  .hint{font-family:var(--mono);font-size:10.5px;color:var(--text-dim);margin-top:10px;line-height:1.7;}
+
+  .layout{display:flex;min-height:100vh;align-items:stretch;}
+  .sidebar{width:260px;flex:none;background:var(--panel);border-right:1px solid var(--line);padding:20px 14px;display:flex;flex-direction:column;gap:12px;}
+  .new-thread-btn{
+    background:var(--panel-3);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:11px 12px;
+    font-weight:600;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;
+    transition:border-color .15s, background .15s;
+  }
+  .new-thread-btn:hover{border-color:var(--final);background:var(--final-soft);color:var(--final);}
+  .new-thread-btn:disabled{opacity:.4;cursor:not-allowed;}
+  .sidebar-label{font-family:var(--mono);font-size:9.5px;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase;margin:8px 4px 0;}
+  .thread-list{display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;}
+  .thread-item{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid transparent;border-radius:10px;padding:9px 8px 9px 11px;cursor:pointer;transition:background .15s, border-color .15s;}
+  .thread-item:hover{background:var(--panel-2);border-color:var(--line);}
+  .thread-item .meta{flex:1;min-width:0;}
+  .thread-item .title{font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .thread-item .time{font-family:var(--mono);font-size:9.5px;color:var(--text-dim);margin-top:3px;}
+  .trash-btn{flex:none;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:13px;padding:5px 7px;border-radius:7px;opacity:.5;transition:opacity .15s, color .15s, background .15s;}
+  .thread-item:hover .trash-btn{opacity:1;}
+  .trash-btn:hover{color:var(--danger);background:rgba(217,122,122,.12);}
+  .empty-hint{font-family:var(--mono);font-size:10.5px;color:var(--text-dim);padding:8px 4px;line-height:1.7;}
+  .sync-box{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px;}
+  .sync-hint{font-family:var(--mono);font-size:10px;color:var(--text-dim);line-height:1.6;margin:4px 0 8px;}
+  .sync-box textarea{font-size:10px;}
+  .sync-user{font-family:var(--mono);font-size:10.5px;color:var(--agree);word-break:break-all;padding:4px 2px;}
+
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(8,9,12,.65);align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(2px);}
+  .modal-overlay.show{display:flex;}
+  .modal-box{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:26px;max-width:320px;width:90%;text-align:center;box-shadow:var(--shadow-md);}
+  .modal-box p{font-size:14.5px;line-height:1.6;margin:0 0 20px;font-family:var(--serif);}
+  .modal-actions{display:flex;gap:10px;justify-content:center;}
+  .modal-btn{border:none;border-radius:9px;padding:10px 22px;font-weight:700;font-size:12.5px;cursor:pointer;letter-spacing:.03em;transition:transform .12s, opacity .12s;}
+  .modal-btn:hover{transform:translateY(-1px);}
+  .modal-btn.yes{background:var(--danger);color:#1a1010;}
+  .modal-btn.no{background:var(--panel-2);color:var(--text);border:1px solid var(--line);}
+
+  .app{flex:1;min-width:0;padding:36px 32px 90px;max-width:1400px;margin:0 auto;}
+  header{margin-bottom:26px;}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;color:var(--text-dim);text-transform:uppercase;margin-bottom:10px;}
+  h1{font-family:var(--serif);font-style:italic;font-weight:500;font-size:29px;margin:0 0 8px;letter-spacing:-.01em;color:var(--text);}
+  .sub{color:var(--text-dim);font-size:13.5px;line-height:1.65;margin:0;}
+  .sub.sub-hint{font-size:12px;margin-top:5px;}
+  .sub code{font-family:var(--mono);background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:11px;color:var(--final);}
+
+  #setupScreen{display:flex;justify-content:center;padding:60px 20px;}
+  .setup-box{max-width:440px;width:100%;}
+  .setup-box h2{font-family:var(--serif);font-style:italic;font-weight:500;font-size:22px;margin:0 0 8px;}
+  .setup-box p{color:var(--text-dim);font-size:13px;line-height:1.7;margin:0 0 18px;}
+  .field{margin-bottom:13px;}
+  .field label{display:block;font-family:var(--mono);font-size:10.5px;color:var(--text-dim);letter-spacing:.03em;margin-bottom:6px;}
+
+  .topbar{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;}
+  .gear-btn{background:none;border:1px solid var(--line);color:var(--text-dim);border-radius:9px;padding:7px 11px;font-size:10.5px;cursor:pointer;font-family:var(--mono);transition:border-color .15s,color .15s;}
+  .gear-btn:hover{color:var(--text);border-color:#454e60;}
+
+  .composer{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:20px;box-shadow:var(--shadow-sm);}
+  .composer-row{display:flex;gap:9px;align-items:flex-end;flex-wrap:wrap;}
+  .composer textarea{flex:1;min-width:200px;}
+  .image-btn{flex:none;display:flex;align-items:center;justify-content:center;width:46px;height:46px;background:var(--panel-2);border:1px dashed var(--line);border-radius:10px;cursor:pointer;font-size:17px;color:var(--text-dim);transition:border-color .15s,color .15s;}
+  .mic-btn{flex:none;display:flex;align-items:center;justify-content:center;width:46px;height:46px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;cursor:pointer;font-size:17px;color:var(--text-dim);transition:border-color .15s,color .15s,background .15s;}
+  .mic-btn:hover{border-color:var(--final);color:var(--final);}
+  .mic-btn.recording{background:rgba(217,122,122,.12);border-color:var(--danger);color:var(--danger);animation:mic-pulse 1.2s infinite;}
+  @keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(217,122,122,.4);}50%{box-shadow:0 0 0 6px rgba(217,122,122,0);}}
+  .image-btn:hover{border-color:var(--final);color:var(--final);}
+  #imageInput{display:none;}
+  .image-chip-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .image-chip{display:flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:5px 8px 5px 5px;}
+  .image-chip img{height:30px;width:30px;object-fit:cover;border-radius:6px;}
+  .image-chip .file-icon{height:30px;width:30px;display:flex;align-items:center;justify-content:center;font-size:16px;background:var(--panel-3);border-radius:6px;}
+  .image-chip span{font-family:var(--mono);font-size:10.5px;color:var(--text-dim);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .image-chip button{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12px;padding:2px 4px;}
+  .image-chip button:hover{color:var(--danger);}
+
+  .stagebar{display:flex;gap:16px;align-items:center;margin-bottom:18px;font-family:var(--mono);font-size:10.5px;color:var(--text-dim);flex-wrap:wrap;letter-spacing:.02em;}
+  .stagebar .stage{position:relative;padding-bottom:3px;transition:color .2s;}
+  .stagebar .stage.active{color:var(--final);}
+  .stagebar .stage.active::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1.5px;background:var(--final);border-radius:2px;}
+  .consensus-badge{display:none;align-items:center;gap:6px;background:rgba(111,185,143,.1);border:1px solid var(--agree);color:var(--agree);border-radius:99px;padding:4px 11px;font-size:10.5px;font-weight:600;}
+  .consensus-badge.show{display:inline-flex;}
+
+  .chatgrid{display:flex;gap:37px;width:100%;align-items:flex-start;margin-bottom:4px;}
+  @media (max-width:700px){.chatgrid{flex-direction:column;} .layout{flex-direction:column;} .sidebar{width:100%;max-height:220px;border-right:none;border-bottom:1px solid var(--line);}}
+  .charcol{flex:1;min-width:0;display:flex;flex-direction:column;}
+  .charcol.claude{align-items:flex-start;}
+  .charcol.gemini{align-items:flex-end;}
+  .avatar-big{width:60px;height:60px;flex:none;border-radius:50%;box-shadow:var(--shadow-sm);}
+  .charcol.claude .avatar-big{box-shadow:0 6px 20px var(--claude-soft);}
+  .charcol.gemini .avatar-big{box-shadow:0 6px 20px var(--gemini-soft);}
+  .charname{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.1em;margin:9px 0 14px;}
+  .charcol.claude .charname{color:var(--claude);}
+  .charcol.gemini .charname{color:var(--gemini);}
+
+  .bubble-row{display:flex;gap:9px;align-items:flex-start;margin-bottom:11px;max-width:100%;width:100%;}
+  .charcol.gemini .bubble-row{flex-direction:row-reverse;}
+  .avatar-sm{width:28px;height:28px;flex:none;margin-top:3px;border-radius:50%;}
+  .bubble{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:11px 14px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;max-width:calc(100% - 39px);box-shadow:var(--shadow-sm);}
+  .charcol.claude .bubble{border-top-left-radius:4px;border-color:#3a2e22;}
+  .charcol.gemini .bubble{border-top-right-radius:4px;border-color:#20293a;}
+  .bubble .round-tag{display:block;font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;}
+  .bubble .round-tag.agree{color:var(--agree);}
+  .inline-continue-btn{
+    display:inline-flex;align-items:center;gap:4px;margin-top:8px;background:var(--panel-2);
+    border:1px solid var(--final-dim);color:var(--final);border-radius:99px;padding:4px 11px;
+    font-family:var(--mono);font-size:10.5px;font-weight:600;cursor:pointer;
+    transition:background .15s, border-color .15s;
+  }
+  .inline-continue-btn:hover{background:var(--final-soft);border-color:var(--final);}
+  .inline-continue-btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  .session-divider{width:100%;display:flex;align-items:center;gap:10px;margin:22px 0 14px;font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.03em;}
+  .session-divider::before,.session-divider::after{content:'';flex:1;height:1px;background:var(--line);}
+  .session-divider.round-divider{margin:16px 0 10px;font-size:9px;color:var(--final);opacity:.75;letter-spacing:.12em;}
+  .session-divider.round-divider::before,.session-divider.round-divider::after{background:var(--final-dim);}
+
+  .session-block{margin-top:8px;}
+  .session-block:first-child{margin-top:0;}
+  .final-box{position:relative;background:var(--panel);border:1px solid var(--final-dim);border-radius:18px;padding:22px;max-width:680px;margin:20px auto 0;width:100%;box-shadow:var(--shadow-md);overflow:visible;}
+  .final-box::before{
+    content:'판정'; position:absolute; top:-11px; right:22px;
+    background:var(--final); color:#1b1420; font-family:var(--mono); font-size:9.5px; font-weight:700;
+    letter-spacing:.08em; padding:4px 11px; border-radius:5px; transform:rotate(-3deg);
+    box-shadow:0 4px 10px rgba(0,0,0,.35);
+  }
+  .final-box .label{font-family:var(--serif);font-style:italic;font-size:15px;font-weight:500;color:var(--final);letter-spacing:0;margin-bottom:12px;}
+  .final-box .body{font-size:14.5px;line-height:1.75;white-space:pre-wrap;}
+
+  .continue-wrap{max-width:680px;margin:6px auto 0;width:100%;text-align:center;}
+  .continue-btn{background:var(--panel-2);border:1px solid var(--final-dim);color:var(--final);border-radius:99px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s, border-color .15s, transform .12s;}
+  .continue-btn:hover{background:var(--final-soft);border-color:var(--final);transform:translateY(-1px);}
+  .continue-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+  .followup-composer{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px;display:flex;gap:9px;align-items:flex-end;box-shadow:var(--shadow-sm);}
+  .followup-composer textarea{flex:1;min-height:44px;}
+
+  .loading-dots{display:inline-flex;gap:4px;align-items:center;}
+  .loading-dots span{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.3;animation:pulse 1.1s infinite ease-in-out;}
+  .loading-dots span:nth-child(2){animation-delay:.15s;}
+  .loading-dots span:nth-child(3){animation-delay:.3s;}
+  @keyframes pulse{0%,80%,100%{opacity:.25;}40%{opacity:1;}}
+
+  @media (prefers-reduced-motion: reduce){
+    .loading-dots span{animation:none;opacity:.6;}
+    *{transition:none !important;}
+  }
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+</head>
+<body>
+
+<div id="setupScreen">
+  <div class="setup-box card">
+    <h2>처음 오셨네요 👋</h2>
+    <p>Claude와 Gemini API 키를 한 번만 입력하면, 다음부터는 이 브라우저에서 다시 묻지 않아요. 키는 <b>이 브라우저의 로컬 저장소에만</b> 저장되고 어디로도 전송되지 않습니다.</p>
+    <div class="field"><label>Claude API 키 (platform.claude.com)</label><input type="password" id="setupClaudeKey" placeholder="sk-ant-..." /></div>
+    <div class="field"><label>Gemini API 키 (Google AI Studio)</label><input type="password" id="setupGeminiKey" placeholder="AQ. 또는 AIza..." /></div>
+    <div class="field"><label>Gemini 모델명</label><input type="text" id="setupGeminiModel" value="gemini-3.6-flash" /></div>
+    <button class="primary-btn" id="setupSaveBtn" style="width:100%;">저장하고 시작하기</button>
+    <div class="error-msg hidden" id="setupError"></div>
+  </div>
+</div>
+
+<div id="mainScreen" class="hidden">
+  <div class="layout">
+    <aside class="sidebar">
+      <button class="new-thread-btn" id="newThreadBtn">＋ 새 토론 생성</button>
+
+      <div class="sync-box" id="syncBoxSetup">
+        <div class="sidebar-label">☁ 클라우드 동기화</div>
+        <p class="sync-hint">Firebase 프로젝트 설정을 붙여넣으면 여러 기기에서 같은 토론 목록을 볼 수 있어요.</p>
+        <textarea id="firebaseConfigInput" placeholder='{"apiKey": "...", "authDomain": "...", ...}' style="min-height:70px;"></textarea>
+        <button class="gear-btn" id="saveFirebaseConfigBtn" style="width:100%;margin-top:6px;">설정 저장</button>
+        <div class="error-msg hidden" id="syncError"></div>
+      </div>
+
+      <div class="sync-box hidden" id="syncBoxLogin">
+        <div class="sidebar-label">☁ 클라우드 동기화</div>
+        <button class="gear-btn" id="googleSignInBtn" style="width:100%;">Google로 로그인</button>
+        <button class="gear-btn" id="clearFirebaseConfigBtn" style="width:100%;margin-top:6px;">설정 초기화</button>
+      </div>
+
+      <div class="sync-box hidden" id="syncBoxUser">
+        <div class="sidebar-label">☁ 동기화 중</div>
+        <div class="sync-user" id="syncUserEmail"></div>
+        <button class="gear-btn" id="signOutBtn" style="width:100%;margin-top:6px;">로그아웃</button>
+      </div>
+
+      <div class="sidebar-label">저장된 토론</div>
+      <div class="thread-list" id="threadList"></div>
+    </aside>
+
+    <div class="app">
+      <header>
+        <div class="eyebrow">Multi-model cross-check · 브라우저에서 직접 실행</div>
+        <div class="topbar">
+          <div>
+            <h1>Claude × Gemini 교차검증</h1>
+            <p class="sub">세션당 최대 5라운드 토론, 합의되면 조기 종료. 완료 후 계속 이어서 토론할 수 있어요.</p>
+            <p class="sub sub-hint">추가 토론에서 <code>#Gemini-질문#</code> 또는 <code>#Claude-질문#</code> 형식으로 쓰면 그 모델에게만 물어봐요. 태그 밖 텍스트는 양쪽에게 물어보는 질문으로 처리됩니다.</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="text" id="modelInput" value="gemini-3.6-flash" style="width:150px;" title="Gemini 모델명" />
+            <button class="gear-btn" id="resetKeysBtn">⚙ 키 초기화</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="composer">
+        <div class="composer-row">
+          <textarea id="question" placeholder="질문을 입력하세요... (이미지를 복사했다면 여기에 Ctrl+V로 붙여넣기 가능)"></textarea>
+          <label class="image-btn" title="이미지/PDF/워드/텍스트 파일 첨부 (최대 10개)">📎<input type="file" id="imageInput" accept="image/*,application/pdf,.pdf,text/plain,text/markdown,text/csv,application/json,.txt,.md,.csv,.json,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple /></label>
+          <button type="button" class="mic-btn" id="micBtn" title="음성으로 입력">🎤</button>
+          <button class="primary-btn" id="runBtn">교차검증 시작</button>
+        </div>
+        <div class="image-chip-list" id="imageChipList"></div>
+        <div class="error-msg hidden" id="runError"></div>
+      </div>
+
+      <div class="stagebar">
+        <span class="stage" id="stageLabel1">① 개별 응답</span>
+        <span class="stage" id="stageLabel2">② 교차 검증</span>
+        <span class="stage" id="stageLabel3">③ 최종 종합</span>
+        <span class="consensus-badge" id="consensusBadge">✓ 합의 완료</span>
+      </div>
+
+      <div id="sessionsContainer"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal-box">
+    <p>정말 삭제하시겠습니까?</p>
+    <div class="modal-actions">
+      <button class="modal-btn yes" id="deleteYesBtn">YES</button>
+      <button class="modal-btn no" id="deleteNoBtn">NO</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const MAX_ROUNDS = 5;
+const loadingHTML = () => '<span class="loading-dots"><span></span><span></span><span></span></span>';
+const LS_KEY = 'crosscheck_keys_v1';
+const LS_THREADS = 'crosscheck_threads_v2';
+
+const boyAvatarSmall = `<svg class="avatar-sm" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="48" fill="#20252f"/><circle cx="50" cy="46" r="22" fill="#f2c9a0"/>
+  <path d="M28 40 Q50 10 72 40 L72 28 Q50 16 28 28 Z" fill="#5a3a25"/>
+  <circle cx="42" cy="48" r="2.6" fill="#20252f"/><circle cx="58" cy="48" r="2.6" fill="#20252f"/>
+  <path d="M44 58 Q50 62 56 58" stroke="#20252f" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M18 96 Q50 66 82 96 Z" fill="#c9793e"/></svg>`;
+const girlAvatarSmall = `<svg class="avatar-sm" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="48" fill="#20252f"/><circle cx="50" cy="46" r="22" fill="#f2c9a0"/>
+  <path d="M25 45 Q22 76 31 90 L35 60 Z" fill="#3d2a1a"/><path d="M75 45 Q78 76 69 90 L65 60 Z" fill="#3d2a1a"/>
+  <path d="M26 38 Q50 8 74 38 L74 26 Q50 12 26 26 Z" fill="#3d2a1a"/>
+  <circle cx="42" cy="48" r="2.6" fill="#20252f"/><circle cx="58" cy="48" r="2.6" fill="#20252f"/>
+  <path d="M44 58 Q50 62 56 58" stroke="#20252f" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M18 96 Q50 64 82 96 Z" fill="#4c93d1"/></svg>`;
+
+const boyAvatarBig = `<svg class="avatar-big" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="48" fill="#20252f"/><circle cx="50" cy="46" r="22" fill="#f2c9a0"/>
+  <path d="M28 40 Q50 10 72 40 L72 28 Q50 16 28 28 Z" fill="#5a3a25"/>
+  <circle cx="42" cy="48" r="2.6" fill="#20252f"/><circle cx="58" cy="48" r="2.6" fill="#20252f"/>
+  <path d="M44 58 Q50 62 56 58" stroke="#20252f" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M18 96 Q50 66 82 96 Z" fill="#c9793e"/></svg>`;
+const girlAvatarBig = `<svg class="avatar-big" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="48" fill="#20252f"/><circle cx="50" cy="46" r="22" fill="#f2c9a0"/>
+  <path d="M25 45 Q22 76 31 90 L35 60 Z" fill="#3d2a1a"/><path d="M75 45 Q78 76 69 90 L65 60 Z" fill="#3d2a1a"/>
+  <path d="M26 38 Q50 8 74 38 L74 26 Q50 12 26 26 Z" fill="#3d2a1a"/>
+  <circle cx="42" cy="48" r="2.6" fill="#20252f"/><circle cx="58" cy="48" r="2.6" fill="#20252f"/>
+  <path d="M44 58 Q50 62 56 58" stroke="#20252f" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M18 96 Q50 64 82 96 Z" fill="#4c93d1"/></svg>`;
+
+// ---------- 키 저장 ----------
+function loadStoredKeys(){ try{ return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); }catch(e){ return null; } }
+function saveStoredKeys(keys){ localStorage.setItem(LS_KEY, JSON.stringify(keys)); }
+function clearStoredKeys(){ localStorage.removeItem(LS_KEY); }
+
+// ---------- 클라우드 동기화 (Firebase) ----------
+const LS_FIREBASE_CONFIG = 'crosscheck_firebase_config_v1';
+let fbApp = null, fbAuth = null, fbDb = null, fbUser = null;
+
+function loadFirebaseConfig(){
+  try{ return JSON.parse(localStorage.getItem(LS_FIREBASE_CONFIG) || 'null'); }catch(e){ return null; }
+}
+function saveFirebaseConfig(cfg){ localStorage.setItem(LS_FIREBASE_CONFIG, JSON.stringify(cfg)); }
+function clearFirebaseConfig(){ localStorage.removeItem(LS_FIREBASE_CONFIG); }
+
+function initFirebase(cfg){
+  if(fbApp) return; // 이미 초기화됨
+  fbApp = firebase.initializeApp(cfg);
+  fbAuth = firebase.auth();
+  fbDb = firebase.firestore();
+  fbAuth.onAuthStateChanged(async (user)=>{
+    fbUser = user;
+    renderSyncBoxes();
+    if(user){
+      // 로그인되면 클라우드에 있는 토론 목록을 받아와서 이 기기 것을 덮어쓴다.
+      try{
+        const doc = await fbDb.collection('users').doc(user.uid).get();
+        if(doc.exists && Array.isArray(doc.data().threads)){
+          saveThreadsLocal(doc.data().threads);
+          renderThreadList();
+        }
+      }catch(e){
+        console.warn('클라우드 토론 목록을 불러오지 못했습니다:', e);
+      }
+    }
+  });
+}
+
+function renderSyncBoxes(){
+  const cfg = loadFirebaseConfig();
+  $('syncBoxSetup').classList.toggle('hidden', !!cfg);
+  $('syncBoxLogin').classList.toggle('hidden', !(cfg && !fbUser));
+  $('syncBoxUser').classList.toggle('hidden', !fbUser);
+  if(fbUser) $('syncUserEmail').textContent = fbUser.email || fbUser.displayName || fbUser.uid;
+}
+
+async function pushThreadsToCloud(list){
+  if(!fbUser || !fbDb) return;
+  try{
+    await fbDb.collection('users').doc(fbUser.uid).set({ threads: list, updatedAt: Date.now() });
+  }catch(e){
+    console.warn('클라우드 동기화 실패:', e);
+  }
+}
+
+$('saveFirebaseConfigBtn').addEventListener('click', ()=>{
+  const raw = $('firebaseConfigInput').value.trim();
+  const errEl = $('syncError');
+  errEl.classList.add('hidden');
+  let cfg;
+  try{ cfg = JSON.parse(raw); }catch(e){ errEl.textContent = 'JSON 형식이 올바르지 않아요. Firebase 콘솔에서 복사한 설정 객체를 그대로 붙여넣어주세요.'; errEl.classList.remove('hidden'); return; }
+  if(!cfg.apiKey || !cfg.projectId){ errEl.textContent = 'apiKey, projectId 등이 포함된 Firebase 설정 객체가 맞는지 확인해주세요.'; errEl.classList.remove('hidden'); return; }
+  saveFirebaseConfig(cfg);
+  initFirebase(cfg);
+  renderSyncBoxes();
+});
+
+$('googleSignInBtn').addEventListener('click', async ()=>{
+  if(!fbAuth) return;
+  try{
+    await fbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+  }catch(e){
+    alert('로그인 실패: ' + e.message);
+  }
+});
+
+$('signOutBtn').addEventListener('click', ()=>{
+  if(fbAuth) fbAuth.signOut();
+});
+
+$('clearFirebaseConfigBtn').addEventListener('click', ()=>{
+  if(!confirm('클라우드 동기화 설정을 삭제할까요? (저장된 토론 자체는 지워지지 않아요)')) return;
+  clearFirebaseConfig();
+  location.reload();
+});
+
+(function bootFirebaseIfConfigured(){
+  const cfg = loadFirebaseConfig();
+  if(cfg) initFirebase(cfg);
+})();
+
+function init(){
+  const k = loadStoredKeys();
+  if(k && k.claudeKey && k.geminiKey){
+    $('setupScreen').classList.add('hidden');
+    $('mainScreen').classList.remove('hidden');
+    $('modelInput').value = k.geminiModel || 'gemini-3.6-flash';
+    renderThreadList();
+    renderSyncBoxes();
+  }else{
+    $('setupScreen').classList.remove('hidden');
+    $('mainScreen').classList.add('hidden');
+  }
+}
+
+$('setupSaveBtn').addEventListener('click', ()=>{
+  const claudeKey = $('setupClaudeKey').value.trim();
+  const geminiKey = $('setupGeminiKey').value.trim();
+  const geminiModel = $('setupGeminiModel').value.trim() || 'gemini-3.6-flash';
+  const errEl = $('setupError');
+  errEl.classList.add('hidden');
+  if(!claudeKey || !geminiKey){ errEl.textContent = '두 키를 모두 입력해주세요.'; errEl.classList.remove('hidden'); return; }
+  saveStoredKeys({ claudeKey, geminiKey, geminiModel });
+  init();
+});
+
+$('resetKeysBtn').addEventListener('click', ()=>{
+  if(!confirm('저장된 API 키를 이 브라우저에서 삭제할까요?')) return;
+  clearStoredKeys();
+  init();
+});
+
+// ---------- 토론(스레드) 저장/목록/삭제 ----------
+function loadThreads(){ try{ return JSON.parse(localStorage.getItem(LS_THREADS) || '[]'); }catch(e){ return []; } }
+function saveThreadsLocal(list){ localStorage.setItem(LS_THREADS, JSON.stringify(list)); }
+function saveThreads(list){ saveThreadsLocal(list); pushThreadsToCloud(list); }
+function makeId(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2)); }
+
+function currentHasContent(){
+  return $('question').value.trim().length > 0 || $('sessionsContainer').children.length > 0;
+}
+function snapshotCurrent(){
+  const q = $('question').value.trim();
+  const title = q ? (q.length > 42 ? q.slice(0,42) + '…' : q) : '(제목 없는 토론)';
+  return {
+    id: makeId(), title, question: q, model: $('modelInput').value.trim(), createdAt: Date.now(),
+    sessionsHTML: $('sessionsContainer').innerHTML
+  };
+}
+function resetMainView(){
+  $('question').value = '';
+  attachedImages = [];
+  $('imageInput').value = '';
+  renderImageChips();
+  $('sessionsContainer').innerHTML = '';
+  $('consensusBadge').classList.remove('show');
+  showRunError('');
+  ['stageLabel1','stageLabel2','stageLabel3'].forEach(id=>$(id).classList.remove('active'));
+  $('stageLabel2').textContent = '② 교차 검증';
+  conversationContext = '';
+  sessionCount = 0;
+}
+function renderThreadList(){
+  const threads = loadThreads();
+  const listEl = $('threadList');
+  if(threads.length === 0){
+    listEl.innerHTML = '<div class="empty-hint">아직 저장된 토론이 없어요. "새 토론 생성"을 누르면 지금 보고 있는 토론이 여기에 저장됩니다.</div>';
+    return;
+  }
+  listEl.innerHTML = '';
+  threads.forEach(t=>{
+    const item = document.createElement('div');
+    item.className = 'thread-item';
+    const dt = new Date(t.createdAt);
+    const timeStr = dt.toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    item.innerHTML = `<div class="meta"><div class="title"></div><div class="time">${timeStr}</div></div><button class="trash-btn" title="삭제">🗑</button>`;
+    item.querySelector('.title').textContent = t.title;
+    item.addEventListener('click', (e)=>{ if(e.target.closest('.trash-btn')) return; loadThread(t.id); });
+    item.querySelector('.trash-btn').addEventListener('click', (e)=>{ e.stopPropagation(); openDeleteModal(t.id); });
+    listEl.appendChild(item);
+  });
+}
+function loadThread(id){
+  const t = loadThreads().find(x=>x.id===id);
+  if(!t) return;
+  $('question').value = t.question || '';
+  if(t.model) $('modelInput').value = t.model;
+  attachedImages = [];
+  $('imageInput').value = '';
+  renderImageChips();
+  $('sessionsContainer').innerHTML = t.sessionsHTML || '';
+  // 불러온 토론은 읽기 전용 스냅샷입니다: 저장된 "추가 토론" 버튼은 세션 상태가 없어 동작하지 않으므로 비활성화 처리
+  $('sessionsContainer').querySelectorAll('.continue-btn').forEach(b=>{
+    b.disabled = true; b.textContent = '（불러온 토론은 이어서 진행할 수 없어요）';
+  });
+  $('consensusBadge').classList.remove('show');
+  showRunError('');
+  ['stageLabel1','stageLabel2','stageLabel3'].forEach(id=>$(id).classList.remove('active'));
+  conversationContext = '';
+  sessionCount = 0;
+}
+$('newThreadBtn').addEventListener('click', ()=>{
+  if(busy){ showRunError('현재 진행 중인 토론이 끝난 뒤에 새 토론을 만들 수 있어요.'); return; }
+  if(currentHasContent()){
+    const threads = loadThreads();
+    threads.unshift(snapshotCurrent());
+    saveThreads(threads);
+    renderThreadList();
+  }
+  resetMainView();
+});
+
+// ---------- 삭제 확인 모달 ----------
+let pendingDeleteId = null;
+function openDeleteModal(id){ pendingDeleteId = id; $('deleteModal').classList.add('show'); }
+function closeDeleteModal(){ pendingDeleteId = null; $('deleteModal').classList.remove('show'); }
+$('deleteYesBtn').addEventListener('click', ()=>{
+  if(pendingDeleteId){
+    saveThreads(loadThreads().filter(t=>t.id !== pendingDeleteId));
+    renderThreadList();
+  }
+  closeDeleteModal();
+});
+$('deleteNoBtn').addEventListener('click', closeDeleteModal);
+$('deleteModal').addEventListener('click', (e)=>{ if(e.target === $('deleteModal')) closeDeleteModal(); });
+
+// ---------- 첨부파일: 이미지 / PDF / 텍스트 계열 (첫 세션에 적용) ----------
+let attachedImages = []; // 이름은 유지하지만 이제 이미지 외 첨부도 담는다 (kind: 'image' | 'pdf' | 'text')
+const MAX_IMAGES = 10;
+const TEXT_EXTENSIONS = /\.(txt|md|csv|json|log)$/i;
+
+function fileIconFor(name){
+  if(/\.pdf$/i.test(name)) return '📕';
+  if(/\.docx?$/i.test(name)) return '📘';
+  return '📄';
+}
+
+async function readAttachmentFile(file){
+  const isImage = file.type.startsWith('image/');
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  const isDocx = /\.docx$/i.test(file.name) || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const isDoc = /\.doc$/i.test(file.name) && !isDocx;
+  const isText = file.type.startsWith('text/') || file.type === 'application/json' || TEXT_EXTENSIONS.test(file.name);
+
+  if(isImage){
+    const dataUrl = await new Promise((resolve, reject)=>{
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+    return { kind: 'image', mimeType: file.type, base64: dataUrl.split(',')[1], dataUrl, name: file.name || '붙여넣은 이미지.png' };
+  }
+  if(isPdf){
+    const dataUrl = await new Promise((resolve, reject)=>{
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+    return { kind: 'pdf', mimeType: 'application/pdf', base64: dataUrl.split(',')[1], dataUrl: null, name: file.name || 'document.pdf' };
+  }
+  if(isDoc){
+    showRunError(`"${file.name}"은(는) 옛날 .doc 형식이라 읽을 수 없어요. 워드에서 "다른 이름으로 저장" → .docx로 저장한 뒤 다시 첨부해주세요.`);
+    return null;
+  }
+  if(isDocx){
+    if(typeof mammoth === 'undefined'){
+      showRunError('워드 파일을 읽는 라이브러리를 불러오지 못했어요. 인터넷 연결을 확인해주세요.');
+      return null;
+    }
+    const arrayBuffer = await file.arrayBuffer();
+    try{
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      return { kind: 'text', text: result.value, dataUrl: null, name: file.name || 'document.docx' };
+    }catch(e){
+      showRunError(`"${file.name}" 파일에서 텍스트를 추출하지 못했어요: ${e.message}`);
+      return null;
+    }
+  }
+  if(isText){
+    const text = await new Promise((resolve, reject)=>{
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsText(file);
+    });
+    return { kind: 'text', text, dataUrl: null, name: file.name || 'note.txt' };
+  }
+  return null; // 지원하지 않는 형식
+}
+
+function renderImageChips(){
+  const list = $('imageChipList');
+  list.innerHTML = '';
+  attachedImages.forEach((att, idx)=>{
+    const chip = document.createElement('div');
+    chip.className = 'image-chip';
+    const preview = att.dataUrl ? `<img src="${att.dataUrl}" />` : `<span class="file-icon">${fileIconFor(att.name)}</span>`;
+    chip.innerHTML = `${preview}<span></span><button title="제거">✕</button>`;
+    chip.querySelector('span').textContent = att.name;
+    chip.querySelector('button').addEventListener('click', ()=>{
+      attachedImages.splice(idx, 1);
+      renderImageChips();
+    });
+    list.appendChild(chip);
+  });
+}
+
+async function addImageFiles(files){
+  if(files.length === 0) return;
+  const room = MAX_IMAGES - attachedImages.length;
+  if(room <= 0){
+    showRunError(`첨부파일은 최대 ${MAX_IMAGES}개까지 가능해요.`);
+    return;
+  }
+  const toAdd = files.slice(0, room);
+  if(files.length > room){
+    showRunError(`첨부파일은 최대 ${MAX_IMAGES}개까지만 가능해요. 처음 ${room}개만 추가했습니다.`);
+  }
+  for(const file of toAdd){
+    const att = await readAttachmentFile(file);
+    if(!att){ showRunError(`지원하지 않는 파일 형식이에요: ${file.name} (이미지, PDF, DOCX, txt/md/csv/json만 가능)`); continue; }
+    attachedImages.push(att);
+  }
+  renderImageChips();
+}
+
+$('imageInput').addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files || []);
+  await addImageFiles(files);
+  $('imageInput').value = '';
+});
+
+// ---------- 음성 입력 (Web Speech API, Chrome/Edge에서 동작) ----------
+function attachMicButton(micBtn, textarea){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){
+    micBtn.title = '이 브라우저는 음성 인식을 지원하지 않아요 (Chrome/Edge 권장)';
+    micBtn.addEventListener('click', ()=>{
+      showRunError('이 브라우저는 음성 인식을 지원하지 않아요. Chrome이나 Edge에서 사용해보세요.');
+    });
+    return;
+  }
+  let recognizer = null;
+  let recognizing = false;
+
+  micBtn.addEventListener('click', ()=>{
+    if(recognizing){
+      if(recognizer) recognizer.stop();
+      return;
+    }
+    recognizer = new SR();
+    recognizer.lang = 'ko-KR';
+    recognizer.continuous = true;
+    recognizer.interimResults = false;
+
+    recognizer.onstart = ()=>{
+      recognizing = true;
+      micBtn.classList.add('recording');
+      micBtn.title = '녹음 중지 (클릭하면 멈춤)';
+    };
+    recognizer.onresult = (e)=>{
+      let finalText = '';
+      for(let i = e.resultIndex; i < e.results.length; i++){
+        if(e.results[i].isFinal) finalText += e.results[i][0].transcript;
+      }
+      if(finalText){
+        const needsSep = textarea.value && !/[\s\n]$/.test(textarea.value);
+        textarea.value += (needsSep ? ' ' : '') + finalText;
+      }
+    };
+    recognizer.onerror = (e)=>{
+      if(e.error !== 'no-speech' && e.error !== 'aborted'){
+        showRunError('음성 인식 오류: ' + e.error + (e.error === 'not-allowed' ? ' (마이크 권한을 허용해주세요)' : ''));
+      }
+    };
+    recognizer.onend = ()=>{
+      recognizing = false;
+      micBtn.classList.remove('recording');
+      micBtn.title = '음성으로 입력';
+    };
+    recognizer.start();
+  });
+}
+attachMicButton($('micBtn'), $('question'));
+
+// 클립보드에 복사된 이미지(스크린샷 등)를 Ctrl+V로 바로 첨부
+$('question').addEventListener('paste', async (e)=>{
+  const items = e.clipboardData && e.clipboardData.items;
+  if(!items) return;
+  const files = [];
+  for(const item of items){
+    if(item.type && item.type.startsWith('image/')){
+      const file = item.getAsFile();
+      if(file) files.push(file);
+    }
+  }
+  if(files.length > 0){
+    e.preventDefault(); // 이미지면 텍스트 붙여넣기 동작은 막고 첨부로만 처리
+    await addImageFiles(files);
+  }
+});
+
+function showRunError(msg){
+  const el = $('runError');
+  el.classList.toggle('hidden', !msg);
+  el.textContent = msg || '';
+}
+function setStage(activeId){
+  ['stageLabel1','stageLabel2','stageLabel3'].forEach(id=>$(id).classList.remove('active'));
+  $(activeId).classList.add('active');
+}
+function addBubble(container, avatarSvg, loading, label){
+  const row = document.createElement('div');
+  row.className = 'bubble-row';
+  const tagHTML = label ? `<span class="round-tag">${label}</span>` : '';
+  row.innerHTML = `${avatarSvg}<div class="bubble">${tagHTML}<span class="txt"></span></div>`;
+  if(loading) row.querySelector('.txt').innerHTML = loadingHTML();
+  container.appendChild(row);
+  return row;
+}
+function addDivider(container, label, variant){
+  const div = document.createElement('div');
+  div.className = variant === 'round' ? 'session-divider round-divider' : 'session-divider';
+  div.textContent = label;
+  container.appendChild(div);
+}
+function parseAgreement(text){
+  const m = text.match(/\[합의:\s*(예|아니오)\]/);
+  return m ? m[1] === '예' : null;
+}
+function stripAgreementTag(text){
+  return text.replace(/\[합의:\s*(예|아니오)\]/, '').trim();
+}
+
+// 토큰 한도로 잘린 응답에 "이어보기" 버튼을 붙인다.
+// containerEl: 버튼을 넣을 부모 요소, txtEl: 텍스트가 들어있는 요소
+// caller: async (prompt) => {text, truncated}
+class UserAbort extends Error {}
+
+// 실패한 지점 바로 아래에 에러 메시지 + 재시도/중단 버튼을 보여주고,
+// 사용자가 "다시 시도"를 누를 때까지 기다렸다가 taskFn을 다시 실행한다.
+async function withInlineRetry(container, taskFn){
+  while(true){
+    try{
+      return await taskFn();
+    }catch(e){
+      await new Promise((resolve, reject)=>{
+        const box = document.createElement('div');
+        box.className = 'error-msg';
+        box.style.margin = '10px 0';
+        const msg = document.createElement('div');
+        msg.textContent = e.message;
+        box.appendChild(msg);
+        const btnRow = document.createElement('div');
+        btnRow.style.marginTop = '8px';
+        btnRow.style.display = 'flex';
+        btnRow.style.gap = '8px';
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'inline-continue-btn';
+        retryBtn.textContent = '다시 시도 →';
+        retryBtn.addEventListener('click', ()=>{ box.remove(); resolve(); });
+        const stopBtn = document.createElement('button');
+        stopBtn.className = 'inline-continue-btn';
+        stopBtn.textContent = '여기서 멈추기';
+        stopBtn.addEventListener('click', ()=>{ box.remove(); reject(new UserAbort()); });
+        btnRow.appendChild(retryBtn);
+        btnRow.appendChild(stopBtn);
+        box.appendChild(btnRow);
+        container.appendChild(box);
+      });
+    }
+  }
+}
+
+function setupContinueButton(containerEl, txtEl, caller){
+  function addBtn(){
+    const btn = document.createElement('button');
+    btn.className = 'inline-continue-btn';
+    btn.textContent = '이어보기 →';
+    btn.addEventListener('click', async ()=>{
+      btn.disabled = true;
+      btn.textContent = '이어쓰는 중...';
+      try{
+        const currentText = txtEl.textContent;
+        const result = await caller(buildContinuationPrompt(currentText));
+        txtEl.textContent = currentText + result.text;
+        btn.remove();
+        if(result.truncated) addBtn();
+      }catch(e){
+        btn.disabled = false;
+        btn.textContent = '이어보기 실패, 다시 시도 →';
+      }
+    });
+    containerEl.appendChild(btn);
+  }
+  addBtn();
+}
+
+// ---------- API 호출 ----------
+async function callClaude(promptText, anthropicKey, images){
+  const content = [];
+  (images || []).forEach(att=>{
+    if(att.kind === 'pdf'){
+      content.push({ type:'document', source:{ type:'base64', media_type:'application/pdf', data:att.base64 } });
+    }else if(att.kind === 'text'){
+      content.push({ type:'text', text: `[첨부파일: ${att.name}]\n${att.text}` });
+    }else{
+      content.push({ type:'image', source:{ type:'base64', media_type:att.mimeType, data:att.base64 } });
+    }
+  });
+  content.push({ type:'text', text: promptText });
+  const body = JSON.stringify({
+    model:'claude-sonnet-4-6',
+    max_tokens:8192,
+    messages:[{ role:'user', content }],
+    tools:[{ type:'web_search_20250305', name:'web_search' }]
+  });
+  const headers = { 'Content-Type':'application/json', 'x-api-key': anthropicKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' };
+
+  const MAX_ATTEMPTS = 4;
+  let res, lastErrText = '';
+  for(let attempt = 0; attempt < MAX_ATTEMPTS; attempt++){
+    res = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers, body });
+    if(res.ok) break;
+    if(RETRYABLE_STATUS.includes(res.status) && attempt < MAX_ATTEMPTS - 1){
+      lastErrText = await res.text().catch(()=> '');
+      await sleep(1200 * Math.pow(2, attempt));
+      continue;
+    }
+    break;
+  }
+  if(!res.ok){
+    const t = await res.text().catch(()=> lastErrText);
+    const hint = RETRYABLE_STATUS.includes(res.status) ? ' (서버 과부하로 3번 재시도했지만 실패했어요. 잠시 후 다시 시도해주세요.)' : '';
+    throw new Error(`Claude API 오류 ${res.status}: ${t.slice(0,300)}${hint}`);
+  }
+  const data = await res.json();
+  const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+  return { text, truncated: data.stop_reason === 'max_tokens' };
+}
+function buildGenerationConfig(model){
+  const cfg = { maxOutputTokens: 8192 };
+  if(/gemini-2\.5/.test(model)) cfg.thinkingConfig = { thinkingBudget: 2048 };
+  else if(/gemini-3/.test(model)) cfg.thinkingConfig = { thinkingLevel: 'medium' };
+  return cfg;
+}
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+const RETRYABLE_STATUS = [503, 429, 529];
+
+async function geminiRequest(url, apiKey, body, useHeader){
+  const opts = { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) };
+  let finalUrl = url;
+  if(useHeader) opts.headers['x-goog-api-key'] = apiKey;
+  else finalUrl += (url.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(apiKey);
+  return fetch(finalUrl, opts);
+}
+async function callGemini(promptText, apiKey, model, images){
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const parts = [];
+  (images || []).forEach(att=>{
+    if(att.kind === 'pdf'){
+      parts.push({ inlineData:{ mimeType:'application/pdf', data:att.base64 } });
+    }else if(att.kind === 'text'){
+      parts.push({ text: `[첨부파일: ${att.name}]\n${att.text}` });
+    }else{
+      parts.push({ inlineData:{ mimeType:att.mimeType, data:att.base64 } });
+    }
+  });
+  parts.push({ text: promptText });
+  const body = { contents:[{ parts }], tools:[{ google_search: {} }], generationConfig: buildGenerationConfig(model) };
+
+  const MAX_ATTEMPTS = 4; // 1회 시도 + 최대 3회 재시도
+  let res, lastErrText = '';
+  for(let attempt = 0; attempt < MAX_ATTEMPTS; attempt++){
+    res = await geminiRequest(url, apiKey, body, true);
+    if(res.status===401 || res.status===403){
+      const retry = await geminiRequest(url, apiKey, body, false);
+      if(retry.ok){ res = retry; break; }
+      res = retry;
+    }
+    if(res.ok) break;
+    if(RETRYABLE_STATUS.includes(res.status) && attempt < MAX_ATTEMPTS - 1){
+      lastErrText = await res.text().catch(()=> '');
+      await sleep(1200 * Math.pow(2, attempt)); // 1.2s, 2.4s, 4.8s
+      continue;
+    }
+    break;
+  }
+  if(!res.ok){
+    const t = await res.text().catch(()=> lastErrText);
+    const hint = RETRYABLE_STATUS.includes(res.status) ? ' (서버 과부하로 3번 재시도했지만 실패했어요. 잠시 후 다시 시도해주세요.)' : '';
+    throw new Error(`Gemini API 오류 ${res.status}: ${t.slice(0,300)}${hint}`);
+  }
+  const data = await res.json();
+  const cand = data.candidates && data.candidates[0];
+  const parts2 = (cand && cand.content && cand.content.parts) || [];
+  const text = parts2.map(p=>p.text||'').join('\n').trim() || '(빈 응답)';
+  return { text, truncated: cand && cand.finishReason === 'MAX_TOKENS' };
+}
+
+function buildContinuationPrompt(currentText){
+  return `아래는 방금 작성하던 답변인데, 글자 수 제한 때문에 중간에 끊겼습니다.\n\n"""\n${currentText}\n"""\n\n처음부터 다시 쓰지 말고, 끊긴 지점 바로 다음부터 자연스럽게 이어서 작성해주세요.`;
+}
+
+// 잘린 응답을 자동으로 이어써서 완성한다. 상대방에게 넘기기 전에 반드시 완결된 텍스트를 보장하기 위함.
+const MAX_AUTO_CONTINUES = 4;
+async function callClaudeFull(promptText, anthropicKey, images){
+  let result = await callClaude(promptText, anthropicKey, images);
+  let fullText = result.text;
+  let tries = 0;
+  while(result.truncated && tries < MAX_AUTO_CONTINUES){
+    result = await callClaude(buildContinuationPrompt(fullText), anthropicKey, images);
+    fullText += result.text;
+    tries++;
+  }
+  return { text: fullText, truncated: result.truncated };
+}
+async function callGeminiFull(promptText, apiKey, model, images){
+  let result = await callGemini(promptText, apiKey, model, images);
+  let fullText = result.text;
+  let tries = 0;
+  while(result.truncated && tries < MAX_AUTO_CONTINUES){
+    result = await callGemini(buildContinuationPrompt(fullText), apiKey, model, images);
+    fullText += result.text;
+    tries++;
+  }
+  return { text: fullText, truncated: result.truncated };
+}
+
+// ---------- 세션(질문 1개당 최대 5라운드 토론) ----------
+let conversationContext = '';
+let sessionCount = 0;
+let busy = false;
+
+// ---------- 특정 모델 지정 질문 (#Gemini-질문# / #Claude-질문#) ----------
+function parseTargetedFollowup(text){
+  const execPattern = /#\s*(제미나이|Gemini|GEMINI|클로드|Claude|CLAUDE)\s*[-:]\s*([^#]+?)\s*#/g;
+  const targets = [];
+  let m;
+  while((m = execPattern.exec(text)) !== null){
+    const label = m[1].toLowerCase();
+    const target = (label.includes('gemini') || label.includes('제미나이')) ? 'gemini' : 'claude';
+    targets.push({ target, question: m[2].trim() });
+  }
+  const stripPattern = /#\s*(제미나이|Gemini|GEMINI|클로드|Claude|CLAUDE)\s*[-:]\s*([^#]+?)\s*#/g;
+  const remainder = text.replace(stripPattern, ' ').replace(/\s+/g, ' ').trim();
+  return { targets, remainder };
+}
+
+async function runTargetedQuestion(target, subQuestion, images){
+  const keys = loadStoredKeys();
+  const model = $('modelInput').value.trim() || 'gemini-3.6-flash';
+  if(!keys || !keys.claudeKey || !keys.geminiKey){ showRunError('API 키가 없습니다. 키 초기화 후 다시 입력해주세요.'); return; }
+
+  busy = true;
+  $('runBtn').disabled = true;
+  $('newThreadBtn').disabled = true;
+
+  const sessionBlock = document.createElement('div');
+  sessionBlock.className = 'session-block';
+  sessionBlock.innerHTML = `
+    <div class="chatgrid">
+      <div class="charcol claude">${boyAvatarBig}<div class="charname">CLAUDE</div></div>
+      <div class="charcol gemini">${girlAvatarBig}<div class="charname">GEMINI</div></div>
+    </div>`;
+  const targetLabel = target === 'gemini' ? 'Gemini' : 'Claude';
+  const divider = document.createElement('div');
+  divider.className = 'session-divider';
+  const shortQ = subQuestion.length>40 ? subQuestion.slice(0,40)+'…' : subQuestion;
+  divider.textContent = `🎯 ${targetLabel}에게만: ${shortQ}`;
+  sessionBlock.insertBefore(divider, sessionBlock.firstChild);
+  $('sessionsContainer').appendChild(sessionBlock);
+
+  const row = document.createElement('div');
+  row.className = 'chatgrid';
+  row.innerHTML = `<div class="charcol claude"></div><div class="charcol gemini"></div>`;
+  sessionBlock.appendChild(row);
+  const targetCol = row.querySelector(target === 'gemini' ? '.charcol.gemini' : '.charcol.claude');
+  const avatarSvg = target === 'gemini' ? girlAvatarSmall : boyAvatarSmall;
+  const loadRow = addBubble(targetCol, avatarSvg, true);
+
+  try{
+    const contextBlock = conversationContext ? `\n\n[지금까지의 논의 요약]\n${conversationContext}\n(참고: 이 중 일부는 두 모델이 아니라 한쪽 모델에게만 개별적으로 물어봤던 질문/답변일 수 있습니다.)\n` : '';
+    const prompt = `${contextBlock}\n질문: "${subQuestion}"\n\n위 질문에 답하세요.`;
+    const caller = target === 'gemini'
+      ? (p)=>callGeminiFull(p, keys.geminiKey, model, images)
+      : (p)=>callClaudeFull(p, keys.claudeKey, images);
+
+    const result = await withInlineRetry(sessionBlock, ()=> caller(prompt));
+    const txtEl = loadRow.querySelector('.txt');
+    txtEl.textContent = result.text;
+    if(result.truncated) setupContinueButton(loadRow.querySelector('.bubble'), txtEl, caller);
+
+    conversationContext += `\n[개별 질문 - ${targetLabel}에게만] ${subQuestion}\n[${targetLabel} 답변] ${result.text}\n`;
+
+    const continueWrap = document.createElement('div');
+    continueWrap.className = 'continue-wrap';
+    continueWrap.innerHTML = `<button class="continue-btn">추가적인 토론이 필요한가요?</button>`;
+    sessionBlock.appendChild(continueWrap);
+    attachContinueHandler(continueWrap);
+  }catch(e){
+    if(!(e instanceof UserAbort)) throw e;
+  }finally{
+    busy = false;
+    $('runBtn').disabled = false;
+    $('newThreadBtn').disabled = false;
+  }
+}
+
+// followup 입력을 파싱해서, #모델-질문# 태그는 해당 모델에게만, 나머지 텍스트는 양쪽에게 묻는다.
+async function processFollowup(followupQ, images){
+  const { targets, remainder } = parseTargetedFollowup(followupQ);
+  for(const t of targets){
+    await runTargetedQuestion(t.target, t.question, images);
+  }
+  if(remainder && remainder.length >= 4){
+    await runSession(remainder, images);
+  }
+}
+
+// 세션 블록 하단의 "추가적인 토론이 필요한가요?" 버튼에 후속 질문 입력창을 연결한다.
+// (처음 질문할 때와 동일하게 이미지 첨부 + 클립보드 붙여넣기를 지원한다)
+function attachContinueHandler(continueWrap){
+  const continueBtn = continueWrap.querySelector('.continue-btn');
+  continueBtn.addEventListener('click', ()=>{
+    if(busy) return;
+    continueBtn.remove();
+
+    let composerImages = [];
+
+    const composer = document.createElement('div');
+    composer.className = 'followup-composer';
+    composer.style.flexDirection = 'column';
+    composer.style.alignItems = 'stretch';
+
+    const row = document.createElement('div');
+    row.className = 'composer-row';
+
+    const ta = document.createElement('textarea');
+    ta.placeholder = '이어서 논의하고 싶은 내용을 입력하세요... (#Gemini-질문# / #Claude-질문# 형식으로 한쪽에만 물어볼 수 있어요, 이미지·PDF·워드·텍스트 파일 첨부/붙여넣기 가능)';
+
+    const imgLabel = document.createElement('label');
+    imgLabel.className = 'image-btn';
+    imgLabel.title = '이미지/PDF/워드/텍스트 파일 첨부';
+    imgLabel.textContent = '📎';
+    const imgInput = document.createElement('input');
+    imgInput.type = 'file';
+    imgInput.accept = 'image/*,application/pdf,.pdf,text/plain,text/markdown,text/csv,application/json,.txt,.md,.csv,.json,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    imgInput.multiple = true;
+    imgInput.style.display = 'none';
+    imgLabel.appendChild(imgInput);
+
+    const sendBtn = document.createElement('button');
+    sendBtn.className = 'primary-btn';
+    sendBtn.textContent = '토론 시작';
+
+    const micBtn = document.createElement('button');
+    micBtn.type = 'button';
+    micBtn.className = 'mic-btn';
+    micBtn.title = '음성으로 입력';
+    micBtn.textContent = '🎤';
+    attachMicButton(micBtn, ta);
+
+    row.appendChild(ta);
+    row.appendChild(imgLabel);
+    row.appendChild(micBtn);
+    row.appendChild(sendBtn);
+
+    const chipList = document.createElement('div');
+    chipList.className = 'image-chip-list';
+
+    composer.appendChild(row);
+    composer.appendChild(chipList);
+    continueWrap.appendChild(composer);
+    ta.focus();
+
+    function renderChips(){
+      chipList.innerHTML = '';
+      composerImages.forEach((att, idx)=>{
+        const chip = document.createElement('div');
+        chip.className = 'image-chip';
+        const preview = att.dataUrl ? `<img src="${att.dataUrl}" />` : `<span class="file-icon">${fileIconFor(att.name)}</span>`;
+        chip.innerHTML = `${preview}<span></span><button title="제거">✕</button>`;
+        chip.querySelector('span').textContent = att.name;
+        chip.querySelector('button').addEventListener('click', ()=>{
+          composerImages.splice(idx, 1);
+          renderChips();
+        });
+        chipList.appendChild(chip);
+      });
+    }
+
+    async function addFiles(files){
+      if(files.length === 0) return;
+      const room = MAX_IMAGES - composerImages.length;
+      if(room <= 0){ showRunError(`첨부파일은 최대 ${MAX_IMAGES}개까지 가능해요.`); return; }
+      const toAdd = files.slice(0, room);
+      if(files.length > room) showRunError(`첨부파일은 최대 ${MAX_IMAGES}개까지만 가능해요. 처음 ${room}개만 추가했습니다.`);
+      for(const file of toAdd){
+        const att = await readAttachmentFile(file);
+        if(!att){ showRunError(`지원하지 않는 파일 형식이에요: ${file.name} (이미지, PDF, DOCX, txt/md/csv/json만 가능)`); continue; }
+        composerImages.push(att);
+      }
+      renderChips();
+    }
+
+    imgInput.addEventListener('change', async (e)=>{
+      await addFiles(Array.from(e.target.files || []));
+      imgInput.value = '';
+    });
+
+    ta.addEventListener('paste', async (e)=>{
+      const items = e.clipboardData && e.clipboardData.items;
+      if(!items) return;
+      const files = [];
+      for(const item of items){
+        if(item.type && item.type.startsWith('image/')){
+          const file = item.getAsFile();
+          if(file) files.push(file);
+        }
+      }
+      if(files.length > 0){
+        e.preventDefault();
+        await addFiles(files);
+      }
+    });
+
+    sendBtn.addEventListener('click', async ()=>{
+      const followupQ = ta.value.trim();
+      if(!followupQ){ ta.focus(); return; }
+      composer.remove();
+      await processFollowup(followupQ, composerImages);
+    });
+  });
+}
+
+async function runSession(questionText, images){
+  const keys = loadStoredKeys();
+  const model = $('modelInput').value.trim() || 'gemini-3.6-flash';
+  if(!keys || !keys.claudeKey || !keys.geminiKey){ showRunError('API 키가 없습니다. 키 초기화 후 다시 입력해주세요.'); return; }
+
+  busy = true;
+  sessionCount++;
+  $('runBtn').disabled = true;
+  $('newThreadBtn').disabled = true;
+  showRunError('');
+  $('consensusBadge').classList.remove('show');
+  $('stageLabel2').textContent = '② 교차 검증';
+
+  // 이번 세션 전용 블록을 만들어 sessionsContainer 맨 아래에 추가한다.
+  // (대화 → 최종 답변 → 추가 토론 버튼이 전부 이 블록 안에 함께 쌓인다)
+  const sessionBlock = document.createElement('div');
+  sessionBlock.className = 'session-block';
+  sessionBlock.innerHTML = `
+    <div class="chatgrid">
+      <div class="charcol claude">${boyAvatarBig}<div class="charname">CLAUDE</div></div>
+      <div class="charcol gemini">${girlAvatarBig}<div class="charname">GEMINI</div></div>
+    </div>`;
+  if(sessionCount > 1){
+    const divider = document.createElement('div');
+    divider.className = 'session-divider';
+    const shortQ = questionText.length>40 ? questionText.slice(0,40)+'…' : questionText;
+    divider.textContent = `🔁 추가 토론 ${sessionCount}: ${shortQ}`;
+    sessionBlock.insertBefore(divider, sessionBlock.firstChild);
+  }
+  $('sessionsContainer').appendChild(sessionBlock);
+
+  // 매 라운드(또는 개별 응답)마다 새 두-컬럼 블록을 만든다.
+  // 구분선을 양쪽에 따로 넣지 않고 이 블록 하나만 위에 둬서, 양쪽이 항상 같은 지점에서 시작하도록 한다.
+  function addRoundColumns(dividerLabel){
+    if(dividerLabel) addDivider(sessionBlock, dividerLabel, 'round');
+    const row = document.createElement('div');
+    row.className = 'chatgrid';
+    row.innerHTML = `<div class="charcol claude"></div><div class="charcol gemini"></div>`;
+    sessionBlock.appendChild(row);
+    return { claudeCol: row.querySelector('.charcol.claude'), geminiCol: row.querySelector('.charcol.gemini') };
+  }
+
+  const contextBlock = conversationContext ? `\n\n[지금까지의 논의 요약]\n${conversationContext}\n` : '';
+
+  try{
+    setStage('stageLabel1');
+    const { claudeCol: initCCol, geminiCol: initGCol } = addRoundColumns('ROUND 1');
+    const cLoad = addBubble(initCCol, boyAvatarSmall, true);
+    const gLoad = addBubble(initGCol, girlAvatarSmall, true);
+
+    const initialPrompt = `${contextBlock}\n질문: "${questionText}"\n\n위 질문에 답하세요.${conversationContext ? ' 이전 논의 내용과 모순되지 않도록 참고하되, 새로운 질문에 집중해서 답하세요.' : ''}`;
+    const [claudeResult, geminiResult] = await withInlineRetry(sessionBlock, ()=> Promise.all([
+      callClaudeFull(initialPrompt, keys.claudeKey, images),
+      callGeminiFull(initialPrompt, keys.geminiKey, model, images)
+    ]));
+
+    const cTxtEl = cLoad.querySelector('.txt');
+    const gTxtEl = gLoad.querySelector('.txt');
+    cTxtEl.textContent = claudeResult.text;
+    gTxtEl.textContent = geminiResult.text;
+    if(claudeResult.truncated) setupContinueButton(cLoad.querySelector('.bubble'), cTxtEl, (p)=>callClaudeFull(p, keys.claudeKey, images));
+    if(geminiResult.truncated) setupContinueButton(gLoad.querySelector('.bubble'), gTxtEl, (p)=>callGeminiFull(p, keys.geminiKey, model, images));
+
+    let claudeCurrent = claudeResult.text, geminiCurrent = geminiResult.text;
+    let consensusReached = false, roundsRun = 0;
+
+    for(let round=1; round<=MAX_ROUNDS; round++){
+      roundsRun = round;
+      setStage('stageLabel2');
+      $('stageLabel2').textContent = `② 교차 검증 (${round}/${MAX_ROUNDS})`;
+      const { claudeCol, geminiCol } = addRoundColumns(`ROUND ${round+1}`);
+      const cRow = addBubble(claudeCol, boyAvatarSmall, true, `라운드 ${round+1}`);
+      const gRow = addBubble(geminiCol, girlAvatarSmall, true, `라운드 ${round+1}`);
+
+      const scopeInstruction = `\n\n【지적 범위 제한 — 반드시 지키세요】\n당신의 역할은 오직 "검증 가능한 사실(숫자, 날짜, 통계, 법령/규정, 인용문, 계산 결과 등)"의 정오만 확인하는 것입니다.\n\n허용되는 지적: 특정 수치가 틀렸다 / 날짜·기간이 틀렸다 / 인용한 조항·문서 내용이 실제와 다르다 / 계산이 틀렸다 / 존재하지 않는 사실을 지어냈다 — 이런 지적은 반드시 "무엇이 왜 틀렸는지" 구체적 근거(정확한 수치나 출처)와 함께 제시하세요.\n\n금지되는 지적 (사실 오류가 아니면 절대 언급하지 마세요): 상대방의 논조·어투·태도 / 이전 발언과의 "일관성" 문제 / "논리적 비약"이라는 표현으로 뭉뚱그린 비판 / "이 주장은 변명처럼 들린다"류의 인상 비평 / 강조점이나 관점의 차이 / 표현 방식이나 설득력 평가. 이런 것들은 사실관계와 무관하므로 지적 대상이 아닙니다.\n\n검증할 구체적인 사실 오류를 찾지 못했다면, 억지로 트집 잡지 말고 "사실관계상 지적할 부분이 없다"고 명시하세요.\n\n【핵심 쟁점 vs 지엽적 오류 구분 — 중요】\n지적하는 사실 오류가 (a) 질문의 핵심 결론에 직접 영향을 주는 "핵심 쟁점"인지, (b) 결론에는 영향이 없는 지엽적·주변적 오류(예: 본문 논지와 무관한 부수적 수치, 사소한 오탈자성 사실 오류 등)인지 구분해서 "[핵심]" 또는 "[지엽]" 태그를 붙여 표시하세요. 지엽적 오류는 여전히 지적은 하되, 그것 하나 때문에 이야기가 곁가지로 새거나 합의를 거부하는 근거로 쓰지 마세요.`;
+      const agreementInstruction = `\n\n중요: [합의: 예]로 표시하려면 다음을 모두 만족해야 합니다:\n1. 핵심 수치·날짜·사실관계를 최소 하나 이상 구체적으로 재검증했다 (왜 맞는지 근거를 제시할 것, 단순 동의 금지).\n2. 질문의 핵심 결론에 영향을 주는 "핵심" 사실 오류가 남아있지 않다.\n합의 판단은 오직 [핵심] 오류 기준으로만 하세요. [지엽] 오류가 남아있어도, 그것이 핵심 결론에 영향을 주지 않는다면 [합의: 예]로 표시할 수 있습니다 (단, 지적한 지엽적 오류 내용은 최종 입장에 그대로 남겨두세요). 핵심 사실 오류가 남아있을 때만 [합의: 아니오]로 표시하고, 정확히 어떤 핵심 사실이 더 검증되어야 하는지 짧게 명시하세요. 검토가 끝나면 맨 마지막 줄에 정확히 다음 형식으로만 표시하세요 (다른 텍스트 없이): [합의: 예] 또는 [합의: 아니오]`;
+      const claudePrompt = `다음은 같은 질문에 대한 다른 AI(Gemini)의 최신 답변입니다. (라운드 ${round})\n\n질문: "${questionText}"\n\n[Gemini의 최신 답변]\n${geminiCurrent}\n\n[당신(Claude)의 최신 답변]\n${claudeCurrent}\n\nGemini 답변의 핵심 수치·사실관계를 하나하나 직접 검증하세요. 반대로 Gemini 답변이 더 정확한 부분이 있다면 그 근거를 확인한 뒤 인정하고 당신의 답을 수정하세요. "최종 입장: " 뒤에 확정된 답을 간결히 제시하세요.${scopeInstruction}${agreementInstruction}`;
+      const geminiPrompt = `다음은 같은 질문에 대한 다른 AI(Claude)의 최신 답변입니다. (라운드 ${round})\n\n질문: "${questionText}"\n\n[Claude의 최신 답변]\n${claudeCurrent}\n\n[당신(Gemini)의 최신 답변]\n${geminiCurrent}\n\nClaude 답변의 핵심 수치·사실관계를 하나하나 직접 검증하세요. 반대로 Claude 답변이 더 정확한 부분이 있다면 그 근거를 확인한 뒤 인정하고 당신의 답을 수정하세요. "최종 입장: " 뒤에 확정된 답을 간결히 제시하세요.${scopeInstruction}${agreementInstruction}`;
+
+      const [claudeCritique, geminiCritique] = await withInlineRetry(sessionBlock, ()=> Promise.all([
+        callClaudeFull(claudePrompt, keys.claudeKey, images),
+        callGeminiFull(geminiPrompt, keys.geminiKey, model, images)
+      ]));
+
+      const claudeAgree = parseAgreement(claudeCritique.text);
+      const geminiAgree = parseAgreement(geminiCritique.text);
+      const claudeText = stripAgreementTag(claudeCritique.text);
+      const geminiText = stripAgreementTag(geminiCritique.text);
+
+      cRow.querySelector('.bubble').innerHTML = `<span class="round-tag ${claudeAgree?'agree':''}">라운드 ${round+1}${claudeAgree!==null ? (claudeAgree?' · 합의':' · 이견') : ''}</span><span class="txt"></span>`;
+      cRow.querySelector('.txt').textContent = claudeText;
+      gRow.querySelector('.bubble').innerHTML = `<span class="round-tag ${geminiAgree?'agree':''}">라운드 ${round+1}${geminiAgree!==null ? (geminiAgree?' · 합의':' · 이견') : ''}</span><span class="txt"></span>`;
+      gRow.querySelector('.txt').textContent = geminiText;
+
+      if(claudeCritique.truncated) setupContinueButton(cRow.querySelector('.bubble'), cRow.querySelector('.txt'), (p)=>callClaudeFull(p, keys.claudeKey, images));
+      if(geminiCritique.truncated) setupContinueButton(gRow.querySelector('.bubble'), gRow.querySelector('.txt'), (p)=>callGeminiFull(p, keys.geminiKey, model, images));
+
+      claudeCurrent = claudeText;
+      geminiCurrent = geminiText;
+
+      if(claudeAgree===true && geminiAgree===true){
+        consensusReached = true;
+        $('consensusBadge').classList.add('show');
+        break;
+      }
+    }
+
+    setStage('stageLabel3');
+    const finalBox = document.createElement('div');
+    finalBox.className = 'final-box';
+    finalBox.innerHTML = `<div class="label">🏁 세션 ${sessionCount} 최종 종합 답변</div><div class="body"></div>`;
+    finalBox.querySelector('.body').innerHTML = loadingHTML();
+    sessionBlock.appendChild(finalBox);
+
+    const note = consensusReached
+      ? `두 모델은 ${roundsRun}라운드 만에 합의에 도달했습니다.`
+      : `${MAX_ROUNDS}라운드 동안 토론했지만 완전한 합의에는 이르지 못했습니다. 남은 이견을 명확히 밝혀주세요.`;
+    const synthesisPrompt = `${contextBlock}\n다음은 같은 질문에 대해 Claude와 Gemini가 여러 라운드에 걸쳐 검토한 최종 입장입니다. ${note}\n\n질문: "${questionText}"\n\n[Claude의 최종 입장]\n${claudeCurrent}\n\n[Gemini의 최종 입장]\n${geminiCurrent}\n\n두 입장을 종합해서 사용자에게 줄 최종 답변을 작성하세요. 합의된 내용 중심으로 답하고, 남은 이견이 있으면 마지막에 짧게 명시하세요. 메타 설명 없이 바로 답으로 시작하세요.`;
+
+    const finalResult = await withInlineRetry(sessionBlock, ()=> callClaudeFull(synthesisPrompt, keys.claudeKey, null));
+    const finalTxtEl = finalBox.querySelector('.body');
+    finalTxtEl.textContent = finalResult.text;
+    if(finalResult.truncated) setupContinueButton(finalBox, finalTxtEl, (p)=>callClaudeFull(p, keys.claudeKey, null));
+
+    conversationContext += `\n[세션 ${sessionCount} 질문] ${questionText}\n[세션 ${sessionCount} 결론] ${finalResult.text}\n`;
+
+    // "추가적인 토론이 필요한가요?" 버튼 + 후속 질문 입력창 (같은 세션 블록 맨 아래에 붙는다)
+    const continueWrap = document.createElement('div');
+    continueWrap.className = 'continue-wrap';
+    continueWrap.innerHTML = `<button class="continue-btn">추가적인 토론이 필요한가요?</button>`;
+    sessionBlock.appendChild(continueWrap);
+    attachContinueHandler(continueWrap);
+  }catch(e){
+    if(!(e instanceof UserAbort)) throw e; // UserAbort(여기서 멈추기)는 조용히 종료, 그 외 예상 못한 오류는 콘솔로 노출
+  }finally{
+    busy = false;
+    $('runBtn').disabled = false;
+    $('newThreadBtn').disabled = false;
+  }
+}
+
+$('runBtn').addEventListener('click', ()=>{
+  const q = $('question').value.trim();
+  if(!q){ showRunError('질문을 입력하세요.'); return; }
+  if(busy) return;
+  $('sessionsContainer').innerHTML = '';
+  conversationContext = '';
+  sessionCount = 0;
+  runSession(q, attachedImages);
+});
+
+init();
+</script>
+</body>
+</html>
