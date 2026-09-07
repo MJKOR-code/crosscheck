@@ -183,6 +183,12 @@
   }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>
+  if(typeof pdfjsLib !== 'undefined'){
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  }
+</script>
 </head>
 <body>
 
@@ -408,8 +414,30 @@ function snapshotCurrent(){
   const title = q ? (q.length > 42 ? q.slice(0,42) + '…' : q) : '(제목 없는 토론)';
   return {
     id: makeId(), title, question: q, model: $('modelInput').value.trim(), createdAt: Date.now(),
-    sessionsHTML: $('sessionsContainer').innerHTML
+    sessionsHTML: $('sessionsContainer').innerHTML,
+    conversationContext: conversationContext,
+    sessionCount: sessionCount
   };
+}
+// 지금 화면에 내용이 있으면(진행 중인 토론이 저장 안 된 상태면) 목록에 자동 저장해둔다.
+// 불러온 토론을 이어가고 있었다면(currentThreadId 있음) 그 항목을 덮어쓰고, 아니면 새로 추가한다.
+// 다른 토론으로 전환하기 직전(사이드바 클릭, 새 토론 생성)에 호출해서 작업 내용이 사라지지 않게 한다.
+function saveCurrentIfNeeded(){
+  if(!currentHasContent()) return;
+  const threads = loadThreads();
+  if(currentThreadId){
+    const idx = threads.findIndex(t=>t.id===currentThreadId);
+    if(idx !== -1){
+      const snap = snapshotCurrent();
+      threads[idx] = { ...snap, id: currentThreadId, createdAt: threads[idx].createdAt };
+      saveThreads(threads);
+      renderThreadList();
+      return;
+    }
+  }
+  threads.unshift(snapshotCurrent());
+  saveThreads(threads);
+  renderThreadList();
 }
 function resetMainView(){
   $('question').value = '';
@@ -423,6 +451,7 @@ function resetMainView(){
   $('stageLabel2').textContent = '② 교차 검증';
   conversationContext = '';
   sessionCount = 0;
+  currentThreadId = null;
   clearAutosave();
 }
 function renderThreadList(){
@@ -440,7 +469,12 @@ function renderThreadList(){
     const timeStr = dt.toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
     item.innerHTML = `<div class="meta"><div class="title"></div><div class="time">${timeStr}</div></div><button class="trash-btn" title="삭제">🗑</button>`;
     item.querySelector('.title').textContent = t.title;
-    item.addEventListener('click', (e)=>{ if(e.target.closest('.trash-btn')) return; loadThread(t.id); });
+    item.addEventListener('click', (e)=>{
+      if(e.target.closest('.trash-btn')) return;
+      if(busy){ showRunError('현재 진행 중인 토론이 끝난 뒤에 다른 토론을 열 수 있어요.'); return; }
+      if(t.id !== currentThreadId) saveCurrentIfNeeded();
+      loadThread(t.id);
+    });
     item.querySelector('.trash-btn').addEventListener('click', (e)=>{ e.stopPropagation(); openDeleteModal(t.id); });
     listEl.appendChild(item);
   });
@@ -454,24 +488,30 @@ function loadThread(id){
   $('imageInput').value = '';
   renderImageChips();
   $('sessionsContainer').innerHTML = t.sessionsHTML || '';
-  // 불러온 토론은 읽기 전용 스냅샷입니다: 저장된 "추가 토론" 버튼은 세션 상태가 없어 동작하지 않으므로 비활성화 처리
-  $('sessionsContainer').querySelectorAll('.continue-btn').forEach(b=>{
-    b.disabled = true; b.textContent = '（불러온 토론은 이어서 진행할 수 없어요）';
-  });
+
+  // 저장된 HTML에는 예전 "추가 토론" 버튼이 그대로 남아있지만, DOM을 통째로 갈아끼운 거라 클릭 이벤트가 안 붙어있다(죽은 버튼).
+  // 전부 제거하고, 복원된 상태를 기반으로 실제 동작하는 이어가기 버튼을 세션 목록 맨 끝에 새로 붙인다.
+  $('sessionsContainer').querySelectorAll('.continue-wrap').forEach(el=>el.remove());
+  const lastBlock = $('sessionsContainer').querySelector('.session-block:last-child');
+  if(lastBlock){
+    const continueWrap = document.createElement('div');
+    continueWrap.className = 'continue-wrap';
+    continueWrap.innerHTML = `<button class="continue-btn">추가적인 토론이 필요한가요?</button>`;
+    lastBlock.appendChild(continueWrap);
+    attachContinueHandler(continueWrap);
+  }
+
   $('consensusBadge').classList.remove('show');
   showRunError('');
   ['stageLabel1','stageLabel2','stageLabel3'].forEach(id=>$(id).classList.remove('active'));
-  conversationContext = '';
-  sessionCount = 0;
+  conversationContext = t.conversationContext || '';
+  sessionCount = t.sessionCount || 0;
+  currentThreadId = t.id;
+  clearAutosave();
 }
 $('newThreadBtn').addEventListener('click', ()=>{
   if(busy){ showRunError('현재 진행 중인 토론이 끝난 뒤에 새 토론을 만들 수 있어요.'); return; }
-  if(currentHasContent()){
-    const threads = loadThreads();
-    threads.unshift(snapshotCurrent());
-    saveThreads(threads);
-    renderThreadList();
-  }
+  saveCurrentIfNeeded();
   resetMainView();
 });
 
@@ -517,13 +557,29 @@ async function readAttachmentFile(file){
     return { kind: 'image', mimeType: file.type, base64: dataUrl.split(',')[1], dataUrl, name: file.name || '붙여넣은 이미지.png' };
   }
   if(isPdf){
-    const dataUrl = await new Promise((resolve, reject)=>{
-      const r = new FileReader();
-      r.onload = () => resolve(r.result);
-      r.onerror = reject;
-      r.readAsDataURL(file);
-    });
-    return { kind: 'pdf', mimeType: 'application/pdf', base64: dataUrl.split(',')[1], dataUrl: null, name: file.name || 'document.pdf' };
+    if(typeof pdfjsLib === 'undefined'){
+      showRunError('PDF를 읽는 라이브러리를 불러오지 못했어요. 인터넷 연결을 확인해주세요.');
+      return null;
+    }
+    try{
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      for(let i = 1; i <= pdf.numPages; i++){
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const pageText = content.items.map(item=>item.str).join(' ');
+        fullText += `\n--- 페이지 ${i} ---\n${pageText}`;
+      }
+      fullText = fullText.trim();
+      if(fullText.length < 20){
+        showRunError(`"${file.name}"에서 텍스트를 거의 추출하지 못했어요. 스캔된 이미지 PDF는 텍스트 추출이 안 될 수 있어요.`);
+      }
+      return { kind: 'text', text: fullText || '(텍스트 추출 실패 — 스캔된 이미지 PDF일 수 있음)', dataUrl: null, name: file.name || 'document.pdf' };
+    }catch(e){
+      showRunError(`"${file.name}" PDF에서 텍스트를 추출하지 못했어요: ${e.message}`);
+      return null;
+    }
   }
   if(isDoc){
     showRunError(`"${file.name}"은(는) 옛날 .doc 형식이라 읽을 수 없어요. 워드에서 "다른 이름으로 저장" → .docx로 저장한 뒤 다시 첨부해주세요.`);
@@ -939,6 +995,7 @@ document.addEventListener('visibilitychange', ()=>{
 // ---------- 세션(질문 1개당 최대 5라운드 토론) ----------
 let conversationContext = '';
 let sessionCount = 0;
+let currentThreadId = null; // 사이드바에서 불러온 토론을 이어가는 경우, 그 토론의 id
 let busy = false;
 
 // ---------- 특정 모델 지정 질문 (#Gemini-질문# / #Claude-질문#) ----------
@@ -1304,9 +1361,11 @@ $('runBtn').addEventListener('click', ()=>{
   const q = $('question').value.trim();
   if(!q){ showRunError('질문을 입력하세요.'); return; }
   if(busy) return;
+  saveCurrentIfNeeded();
   $('sessionsContainer').innerHTML = '';
   conversationContext = '';
   sessionCount = 0;
+  currentThreadId = null;
   clearAutosave();
   runSession(q, attachedImages);
 });
