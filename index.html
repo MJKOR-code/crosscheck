@@ -878,10 +878,15 @@ function renderAnswerText(el, text, citations){
     return;
   }
   const escaped = escapeHtml(text);
-  el.innerHTML = escaped.replace(/\[(\d+)\]/g, (match, numStr)=>{
-    const url = citations[parseInt(numStr, 10) - 1];
-    if(!url) return match;
-    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="citation-link">[${numStr}]</a>`;
+  // [1] 형태뿐 아니라 [1, 2] / [1,2,3] 처럼 한 괄호에 여러 번호가 묶인 경우도 각각 링크로 변환
+  el.innerHTML = escaped.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, (match, nums)=>{
+    const linked = nums.split(',').map(n=>{
+      const numStr = n.trim();
+      const url = citations[parseInt(numStr, 10) - 1];
+      if(!url) return numStr;
+      return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="citation-link">${numStr}</a>`;
+    });
+    return `[${linked.join(', ')}]`;
   });
 }
 
@@ -1003,7 +1008,23 @@ async function callPerplexityViaOpenRouter(promptText, apiKey, images, model){
   const choice = data.choices && data.choices[0];
   const text = ((choice && choice.message && choice.message.content) || '').trim();
   const truncated = !!(choice && choice.finish_reason === 'length');
-  const citations = data.citations || [];
+
+  // OpenRouter를 거치면 citations 필드 위치가 문서화되어 있지 않아, 가능한 위치를 순서대로 확인한다.
+  let citations = data.citations
+    || (choice && choice.citations)
+    || (choice && choice.message && choice.message.citations)
+    || [];
+  if((!citations || citations.length === 0) && choice && choice.message && Array.isArray(choice.message.annotations)){
+    // OpenAI 스타일 url_citation annotation 형식도 대비
+    citations = choice.message.annotations
+      .map(a => (a.url_citation && a.url_citation.url) || a.url)
+      .filter(Boolean);
+  }
+  if(!citations || citations.length === 0){
+    console.warn('Perplexity 응답에서 citations를 찾지 못했습니다. 전체 응답:', data);
+    citations = [];
+  }
+
   const domains = citations.map(u=>{ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return u; } });
   return { text, truncated, searchedQueries: domains, citationsRaw: citations };
 }
