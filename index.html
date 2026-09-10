@@ -246,12 +246,12 @@
           <div>
             <h1>Perplexity × Gemini 교차검증</h1>
             <p class="sub">세션당 최대 5라운드 토론, 합의되면 조기 종료. 완료 후 계속 이어서 토론할 수 있어요.</p>
-            <p class="sub sub-hint">추가 토론에서 <code>#Gemini-질문#</code> 또는 <code>#Claude-질문#</code> 형식으로 쓰면 그 모델에게만 물어봐요. 태그 밖 텍스트는 양쪽에게 물어보는 질문으로 처리됩니다.</p>
+            <p class="sub sub-hint">추가 토론에서 <code>#A-질문#</code>(왼쪽 모델) / <code>#B-질문#</code>(Gemini)처럼 간단히 쓰거나, <code>#Gemini-질문#</code>·<code>#Claude-질문#</code>처럼 이름으로도 쓸 수 있어요. 태그 밖 텍스트는 양쪽에게 물어보는 질문으로 처리됩니다.</p>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <select id="claudeModelInput" title="Claude 모델" style="width:auto;">
               <option value="perplexity/sonar" selected>Perplexity Sonar (실시간 검색 내장)</option>
-              <option value="perplexity/sonar-reasoning">Perplexity Sonar Reasoning (심층 논증)</option>
+              <option value="perplexity/sonar-reasoning-pro">Perplexity Sonar Reasoning Pro (심층 논증)</option>
               <option value="perplexity/sonar-pro">Perplexity Sonar Pro (심화 검색·다단계)</option>
               <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (저렴·빠름)</option>
               <option value="claude-sonnet-4-6">Claude Sonnet (정확·고품질)</option>
@@ -1215,15 +1215,18 @@ let busy = false;
 
 // ---------- 특정 모델 지정 질문 (#Gemini-질문# / #Claude-질문#) ----------
 function parseTargetedFollowup(text){
-  const execPattern = /#\s*(제미나이|Gemini|GEMINI|클로드|Claude|CLAUDE)\s*[-:]\s*([^#]+?)\s*#/g;
+  // A = 왼쪽 모델(현재 선택된 게 Claude든 DeepSeek든 Perplexity든 상관없이), B = Gemini.
+  // 기존 이름(제미나이/클로드/딥시크/퍼플렉시티)도 그대로 인식한다.
+  const namePattern = '제미나이|gemini|클로드|claude|딥시크|deepseek|퍼플렉시티|perplexity|a|b';
+  const execPattern = new RegExp(`#\\s*(${namePattern})\\s*[-:]\\s*([^#]+?)\\s*#`, 'gi');
   const targets = [];
   let m;
   while((m = execPattern.exec(text)) !== null){
     const label = m[1].toLowerCase();
-    const target = (label.includes('gemini') || label.includes('제미나이')) ? 'gemini' : 'claude';
+    const target = (label === 'b' || label.includes('gemini') || label.includes('제미나이')) ? 'gemini' : 'claude';
     targets.push({ target, question: m[2].trim() });
   }
-  const stripPattern = /#\s*(제미나이|Gemini|GEMINI|클로드|Claude|CLAUDE)\s*[-:]\s*([^#]+?)\s*#/g;
+  const stripPattern = new RegExp(`#\\s*(${namePattern})\\s*[-:]\\s*([^#]+?)\\s*#`, 'gi');
   const remainder = text.replace(stripPattern, ' ').replace(/\s+/g, ' ').trim();
   return { targets, remainder };
 }
@@ -1352,7 +1355,7 @@ function attachContinueHandler(continueWrap){
     modelRow.appendChild(modelSelect);
 
     const ta = document.createElement('textarea');
-    ta.placeholder = '이어서 논의하고 싶은 내용을 입력하세요... (#Gemini-질문# / #Claude-질문# 형식으로 한쪽에만 물어볼 수 있어요, 이미지·PDF·워드·텍스트 파일 첨부/붙여넣기 가능)';
+    ta.placeholder = '이어서 논의하고 싶은 내용을 입력하세요... (#A-질문# = 왼쪽 모델만, #B-질문# = Gemini만, 이미지·PDF·워드·텍스트 파일 첨부/붙여넣기 가능)';
 
     const imgLabel = document.createElement('label');
     imgLabel.className = 'image-btn';
