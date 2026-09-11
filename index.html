@@ -104,6 +104,13 @@
   .image-btn:hover{border-color:var(--final);color:var(--final);}
   #imageInput{display:none;}
   .image-chip-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .route-form{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;}
+  .route-form input{flex:1;min-width:140px;}
+  .route-arrow{color:var(--text-dim);font-family:var(--mono);}
+  .route-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow-sm);margin-top:8px;}
+  .route-card .route-title{font-family:var(--mono);font-size:11px;color:var(--final);letter-spacing:.05em;margin-bottom:10px;}
+  .route-card .route-map{height:380px;border-radius:10px;overflow:hidden;background:var(--panel-2);}
+  .route-card .route-info{font-family:var(--mono);font-size:11.5px;color:var(--text-dim);margin-top:10px;line-height:1.7;}
   .image-chip{display:flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:5px 8px 5px 5px;}
   .image-chip img{height:30px;width:30px;object-fit:cover;border-radius:6px;}
   .image-chip .file-icon{height:30px;width:30px;display:flex;align-items:center;justify-content:center;font-size:16px;background:var(--panel-3);border-radius:6px;}
@@ -213,6 +220,8 @@
     .avatar-big, .avatar-sm{ filter:none; }
   }
 </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script>
@@ -280,9 +289,16 @@
           <textarea id="question" placeholder="질문을 입력하세요... (이미지를 복사했다면 여기에 Ctrl+V로 붙여넣기 가능)"></textarea>
           <label class="image-btn" title="이미지/PDF/워드/텍스트 파일 첨부 (최대 10개)">📎<input type="file" id="imageInput" accept="image/*,application/pdf,.pdf,text/plain,text/markdown,text/csv,application/json,.txt,.md,.csv,.json,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple /></label>
           <button type="button" class="mic-btn" id="micBtn" title="음성으로 입력">🎤</button>
+          <button type="button" class="mic-btn" id="mapToggleBtn" title="실제 지도에 경로 표시">🗺️</button>
           <button class="primary-btn" id="runBtn">교차검증 시작</button>
         </div>
         <div class="image-chip-list" id="imageChipList"></div>
+        <div class="route-form hidden" id="routeForm">
+          <input type="text" id="routeFrom" placeholder="출발지 (예: 서울역)" />
+          <span class="route-arrow">→</span>
+          <input type="text" id="routeTo" placeholder="도착지 (예: 부산역)" />
+          <button class="primary-btn" id="routeGoBtn" type="button">경로 보기</button>
+        </div>
         <div class="error-msg hidden" id="runError"></div>
       </div>
 
@@ -884,6 +900,114 @@ function showRunError(msg){
   el.classList.toggle('hidden', !msg);
   el.textContent = msg || '';
 }
+
+// ---------- 실제 지도에 경로 표시 (Leaflet + OpenStreetMap + Nominatim 지오코딩 + OSRM 경로계산, 전부 무료·키 불필요) ----------
+$('mapToggleBtn').addEventListener('click', ()=>{
+  $('routeForm').classList.toggle('hidden');
+  if(!$('routeForm').classList.contains('hidden')) $('routeFrom').focus();
+});
+
+async function geocodePlace(name){
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(name)}`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(`장소 검색 실패 (${res.status})`);
+  const data = await res.json();
+  if(!data || data.length === 0) throw new Error(`"${name}" 위치를 찾을 수 없어요. 더 구체적으로 입력해보세요.`);
+  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), displayName: data[0].display_name };
+}
+
+async function fetchRoute(from, to){
+  const url = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=full&geometries=geojson`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(`경로 계산 실패 (${res.status})`);
+  const data = await res.json();
+  if(!data.routes || data.routes.length === 0) throw new Error('두 지점 사이의 경로를 찾을 수 없어요 (바다로 막혀있는 등 자동차 경로가 없을 수 있어요).');
+  return data.routes[0];
+}
+
+function formatDuration(seconds){
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return h > 0 ? `${h}시간 ${m}분` : `${m}분`;
+}
+
+// 실제 지도에 경로를 그린 카드를 sessionsContainer에 추가한다 (메인 입력창/추가 토론 입력창 양쪽에서 재사용).
+async function createRouteCard(fromName, toName){
+  const card = document.createElement('div');
+  card.className = 'route-card';
+  card.innerHTML = `<div class="route-title">🗺️ ${fromName} → ${toName}</div><div class="route-map"></div><div class="route-info"></div>`;
+  $('sessionsContainer').appendChild(card);
+  card.querySelector('.route-map').innerHTML = loadingHTML();
+
+  try{
+    const [from, to] = await Promise.all([geocodePlace(fromName), geocodePlace(toName)]);
+    const route = await fetchRoute(from, to);
+
+    const mapDiv = card.querySelector('.route-map');
+    mapDiv.innerHTML = '';
+    const map = L.map(mapDiv);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
+    }).addTo(map);
+    const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+    const polyline = L.polyline(coords, { color: '#a68bd6', weight: 4 }).addTo(map);
+    L.marker([from.lat, from.lon]).addTo(map).bindPopup(`출발: ${fromName}`);
+    L.marker([to.lat, to.lon]).addTo(map).bindPopup(`도착: ${toName}`);
+    map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
+
+    const km = (route.distance / 1000).toFixed(1);
+    card.querySelector('.route-info').textContent = `거리 약 ${km}km · 예상 소요시간 약 ${formatDuration(route.duration)} (자동차 기준, OSRM 추정)`;
+  }catch(e){
+    card.querySelector('.route-map').innerHTML = '';
+    card.querySelector('.route-info').innerHTML = `<span style="color:var(--danger)">${e.message}</span>`;
+  }
+}
+
+$('routeGoBtn').addEventListener('click', async ()=>{
+  const fromName = $('routeFrom').value.trim();
+  const toName = $('routeTo').value.trim();
+  if(!fromName || !toName){ showRunError('출발지와 도착지를 모두 입력해주세요.'); return; }
+  showRunError('');
+  await createRouteCard(fromName, toName);
+  $('routeFrom').value = '';
+  $('routeTo').value = '';
+  $('routeForm').classList.add('hidden');
+});
+
+// 지도 버튼 + 경로 입력 폼을 새로 만들어서 반환한다 (추가 토론 입력창 등 어디서든 붙일 수 있게).
+function createMapFeature(){
+  const mapBtn = document.createElement('button');
+  mapBtn.type = 'button';
+  mapBtn.className = 'mic-btn';
+  mapBtn.title = '실제 지도에 경로 표시';
+  mapBtn.textContent = '🗺️';
+
+  const form = document.createElement('div');
+  form.className = 'route-form hidden';
+  form.innerHTML = `<input type="text" placeholder="출발지 (예: 서울역)" class="route-from-input" /><span class="route-arrow">→</span><input type="text" placeholder="도착지 (예: 부산역)" class="route-to-input" /><button class="primary-btn route-go-btn" type="button">경로 보기</button>`;
+  const fromInput = form.querySelector('.route-from-input');
+  const toInput = form.querySelector('.route-to-input');
+  const goBtn = form.querySelector('.route-go-btn');
+
+  mapBtn.addEventListener('click', ()=>{
+    form.classList.toggle('hidden');
+    if(!form.classList.contains('hidden')) fromInput.focus();
+  });
+
+  goBtn.addEventListener('click', async ()=>{
+    const fromName = fromInput.value.trim();
+    const toName = toInput.value.trim();
+    if(!fromName || !toName){ showRunError('출발지와 도착지를 모두 입력해주세요.'); return; }
+    showRunError('');
+    await createRouteCard(fromName, toName);
+    fromInput.value = '';
+    toInput.value = '';
+    form.classList.add('hidden');
+  });
+
+  return { mapBtn, form };
+}
+
 function setStage(activeId){
   ['stageLabel1','stageLabel2','stageLabel3'].forEach(id=>$(id).classList.remove('active'));
   $(activeId).classList.add('active');
@@ -1131,6 +1255,9 @@ async function callPerplexityViaOpenRouter(promptText, apiKey, images, model){
     || (choice && choice.search_results)
     || (choice && choice.message && choice.message.search_results)
     || [];
+  if(searchResults.length === 0){
+    console.warn('Perplexity 응답에서 search_results(제목 정보)를 찾지 못했습니다. 전체 응답:', data);
+  }
   const titleByUrl = {};
   searchResults.forEach(sr=>{ if(sr && sr.url && sr.title) titleByUrl[sr.url] = sr.title; });
   const citationTitles = citations.map(u => titleByUrl[u] || null);
@@ -1272,13 +1399,25 @@ function parseTargetedFollowup(text){
   // A = 왼쪽 모델(현재 선택된 게 Claude든 DeepSeek든 Perplexity든 상관없이), B = Gemini.
   // 기존 이름(제미나이/클로드/딥시크/퍼플렉시티)도 그대로 인식한다.
   const namePattern = '제미나이|gemini|클로드|claude|딥시크|deepseek|퍼플렉시티|perplexity|a|b';
+  const toTarget = (label)=> (label.toLowerCase() === 'b' || label.toLowerCase().includes('gemini') || label.includes('제미나이')) ? 'gemini' : 'claude';
+
+  // 형식 1: #B# 질문내용 처럼 태그만 딱 쓰고 뒤에 이어서 질문을 쓰는 더 직관적인 방식.
+  // (맨 앞에 태그가 있고, 그 뒤가 전부 그 대상에게 가는 질문이 된다)
+  const leadingTagPattern = new RegExp(`^#\\s*(${namePattern})\\s*#\\s*`, 'i');
+  const leadingMatch = text.match(leadingTagPattern);
+  if(leadingMatch){
+    const question = text.slice(leadingMatch[0].length).trim();
+    if(question){
+      return { targets: [{ target: toTarget(leadingMatch[1]), question }], remainder: '' };
+    }
+  }
+
+  // 형식 2: #B-질문내용# 처럼 질문을 태그 안에 하이픈/콜론과 함께 넣는 방식 (여러 개 섞어 쓰기 가능).
   const execPattern = new RegExp(`#\\s*(${namePattern})\\s*[-:]\\s*([^#]+?)\\s*#`, 'gi');
   const targets = [];
   let m;
   while((m = execPattern.exec(text)) !== null){
-    const label = m[1].toLowerCase();
-    const target = (label === 'b' || label.includes('gemini') || label.includes('제미나이')) ? 'gemini' : 'claude';
-    targets.push({ target, question: m[2].trim() });
+    targets.push({ target: toTarget(m[1]), question: m[2].trim() });
   }
   const stripPattern = new RegExp(`#\\s*(${namePattern})\\s*[-:]\\s*([^#]+?)\\s*#`, 'gi');
   const remainder = text.replace(stripPattern, ' ').replace(/\s+/g, ' ').trim();
@@ -1433,9 +1572,12 @@ function attachContinueHandler(continueWrap){
     micBtn.textContent = '🎤';
     attachMicButton(micBtn, ta);
 
+    const { mapBtn, form: routeFormEl } = createMapFeature();
+
     row.appendChild(ta);
     row.appendChild(imgLabel);
     row.appendChild(micBtn);
+    row.appendChild(mapBtn);
     row.appendChild(sendBtn);
 
     const chipList = document.createElement('div');
@@ -1444,6 +1586,7 @@ function attachContinueHandler(continueWrap){
     composer.appendChild(modelRow);
     composer.appendChild(row);
     composer.appendChild(chipList);
+    composer.appendChild(routeFormEl);
     continueWrap.appendChild(composer);
     ta.focus();
 
