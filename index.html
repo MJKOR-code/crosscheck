@@ -1089,6 +1089,15 @@ function addSearchTag(bubbleEl, queries){
   bubbleEl.appendChild(tag);
 }
 
+// 다수결 조건은 충족했지만 [핵심] 반론이 남아 토론을 강제로 계속 진행할 때, 세션 화면에 그 사실을 표시한다.
+function addCriticalDissentNotice(sessionBlock, nextRoundNum){
+  const notice = document.createElement('div');
+  notice.className = 'critical-dissent-notice';
+  notice.style.cssText = 'margin:8px 0;padding:10px 14px;background:#fff3cd;border:1px solid #ffe08a;border-radius:8px;font-size:13px;color:#7a5c00;';
+  notice.textContent = `⚠️ 다수(2/3)가 합의했지만, 원 질문에 결정적인 [핵심] 반론이 아직 남아있어 토론을 계속 진행합니다 (다음: 라운드 ${nextRoundNum}).`;
+  sessionBlock.appendChild(notice);
+}
+
 function escapeHtml(str){
   const div = document.createElement('div');
   div.textContent = str;
@@ -1780,7 +1789,7 @@ async function runSession(questionText, images){
     });
     autosaveCurrent();
 
-    let consensusReached = false, roundsRun = 0, finalAgreeCount = 0;
+    let consensusReached = false, roundsRun = 0, finalAgreeCount = 0, endedWithBlockedCriticalDissent = false;
     const scopeInstruction = `\n\n【지적 범위 제한 — 반드시 지키세요】\n당신의 역할은 오직 "검증 가능한 사실(숫자, 날짜, 통계, 법령/규정, 인용문, 계산 결과 등)"의 정오만 확인하는 것입니다.\n\n허용되는 지적: 특정 수치가 틀렸다 / 날짜·기간이 틀렸다 / 인용한 조항·문서 내용이 실제와 다르다 / 계산이 틀렸다 / 존재하지 않는 사실을 지어냈다 — 이런 지적은 반드시 "무엇이 왜 틀렸는지" 구체적 근거(정확한 수치나 출처)와 함께 제시하세요.\n\n금지되는 지적 (사실 오류가 아니면 절대 언급하지 마세요): 상대방의 논조·어투·태도 / 이전 발언과의 "일관성" 문제 / "논리적 비약"이라는 표현으로 뭉뚱그린 비판 / "이 주장은 변명처럼 들린다"류의 인상 비평 / 강조점이나 관점의 차이 / 표현 방식이나 설득력 평가. 이런 것들은 사실관계와 무관하므로 지적 대상이 아닙니다.\n\n검증할 구체적인 사실 오류를 찾지 못했다면, 억지로 트집 잡지 말고 "사실관계상 지적할 부분이 없다"고 명시하세요.\n\n【핵심 쟁점 vs 지엽적 오류 구분 — 중요】\n지적하는 사실 오류가 (a) 질문의 핵심 결론에 직접 영향을 주는 "핵심 쟁점"인지, (b) 결론에는 영향이 없는 지엽적·주변적 오류(예: 본문 논지와 무관한 부수적 수치, 사소한 오탈자성 사실 오류 등)인지 구분해서 "[핵심]" 또는 "[지엽]" 태그를 붙여 표시하세요. 지엽적 오류는 여전히 지적은 하되, 그것 하나 때문에 이야기가 곁가지로 새거나 합의를 거부하는 근거로 쓰지 마세요.`;
     const stayOnTopicInstruction = `\n\n【주제 이탈 방지 — 매우 중요】\n검토를 시작하기 전에 원래 질문("${questionText}")이 정확히 무엇을 묻고 있는지 다시 확인하세요. 상대방 답변에서 사실 오류를 발견하더라도, 그것이 원래 질문에 답하는 데 실질적으로 기여하지 않는 지엽적인 것이라면 지적을 최소화하거나 아예 생략하세요 — 지엽적 오류 교정이 쌓여서 정작 질문의 핵심 답이 흐려지거나 사라지면 안 됩니다. "최종 입장"은 반드시 원래 질문에 정면으로, 명확하게 답하는 내용으로 마무리하세요. 곁가지 논의로 빠져서 질문과 무관한 결론을 내지 마세요.`;
     const agreementInstruction = `\n\n중요: [합의: 예]로 표시하려면 다음을 모두 만족해야 합니다:\n1. 핵심 수치·날짜·사실관계를 최소 하나 이상 구체적으로 재검증했다 (왜 맞는지 근거를 제시할 것, 단순 동의 금지).\n2. 질문의 핵심 결론에 영향을 주는 "핵심" 사실 오류가 남아있지 않다.\n합의 판단은 오직 [핵심] 오류 기준으로만 하세요. [지엽] 오류나 [확인 불가] 표시가 남아있어도, 그것이 핵심 결론에 영향을 주지 않는다면 [합의: 예]로 표시할 수 있습니다 (단, 지적한 내용은 최종 입장에 그대로 남겨두세요). 핵심 사실 오류가 남아있을 때만 [합의: 아니오]로 표시하고, 정확히 어떤 핵심 사실이 더 검증되어야 하는지 짧게 명시하세요. 검토가 끝나면 맨 마지막 줄에 정확히 다음 형식으로만 표시하세요 (다른 텍스트 없이): [합의: 예] 또는 [합의: 아니오]`;
@@ -1805,11 +1814,13 @@ async function runSession(questionText, images){
       ));
 
       let agreeCount = 0;
+      let criticalDissent = false; // 이견을 표한 참가자가 [핵심] 태그를 달았으면 다수결로 조기 종료하지 않는다
       participants.forEach((p, idx)=>{
         const result = critiques[idx];
         const agree = parseAgreement(result.text);
         const text = stripAgreementTag(result.text);
         if(agree === true) agreeCount++;
+        if(agree === false && /\[핵심\]/.test(text)) criticalDissent = true;
         rows[p.id].querySelector('.bubble').innerHTML = `<span class="round-tag ${agree?'agree':''}">라운드 ${round+1}${agree!==null ? (agree?' · 합의':' · 이견') : ''}</span><span class="txt"></span>`;
         renderAnswerText(rows[p.id].querySelector('.txt'), text, result.citationsRaw, result.citationTitles);
         addSearchTag(rows[p.id].querySelector('.bubble'), result.searchedQueries);
@@ -1819,10 +1830,20 @@ async function runSession(questionText, images){
       autosaveCurrent();
       finalAgreeCount = agreeCount;
 
-      if(agreeCount >= requiredAgree){
+      const isUnanimous = agreeCount === participants.length;
+      // 3자 모드에서 다수결(2/3)로 끝내려는 상황인데, 이견을 낸 쪽이 [핵심](원 질문에 결정적) 이슈를 제기했다면
+      // 조기 종료하지 않고 계속 토론을 진행한다. 만장일치는 항상 즉시 종료. [지엽] 이견만 남았다면 다수결로 종료.
+      if(agreeCount >= requiredAgree && (isUnanimous || !criticalDissent)){
         consensusReached = true;
         $('consensusBadge').classList.add('show');
         break;
+      }
+      if(agreeCount >= requiredAgree && criticalDissent){
+        // 다수결 조건은 충족했지만 핵심 반론이 남아있어 라운드를 강제로 계속 진행
+        endedWithBlockedCriticalDissent = true;
+        addCriticalDissentNotice(sessionBlock, round+1);
+      }else{
+        endedWithBlockedCriticalDissent = false;
       }
     }
 
@@ -1836,6 +1857,8 @@ async function runSession(questionText, images){
         consensusLabel = `<span class="consensus-detail unanimous">🤝 만장일치 합의 (${finalAgreeCount}/${participants.length})</span>`;
       }else if(consensusReached){
         consensusLabel = `<span class="consensus-detail majority">🤝 다수결 합의 (${finalAgreeCount}/${participants.length})</span>`;
+      }else if(endedWithBlockedCriticalDissent){
+        consensusLabel = `<span class="consensus-detail nomajority">⚠️ 합의 불발 — 핵심 이견 잔존 (다수 ${finalAgreeCount}/${participants.length}명 동의했으나 결정적 반론 미해소, ${MAX_ROUNDS}라운드 종료)</span>`;
       }else{
         consensusLabel = `<span class="consensus-detail nomajority">⚠️ 합의 불발 (최종 ${finalAgreeCount}/${participants.length}명 동의, ${MAX_ROUNDS}라운드 종료)</span>`;
       }
@@ -1846,7 +1869,9 @@ async function runSession(questionText, images){
 
     const note = consensusReached
       ? `${participants.length}개 모델 중 ${finalAgreeCount}개가 ${roundsRun}라운드 만에 합의에 도달했습니다 (${finalAgreeCount === participants.length ? '만장일치' : '다수결'}).`
-      : `${MAX_ROUNDS}라운드 동안 토론했지만 완전한 합의에는 이르지 못했습니다 (최종 ${finalAgreeCount}/${participants.length}명 동의). 남은 이견을 명확히 밝혀주세요.`;
+      : endedWithBlockedCriticalDissent
+        ? `${MAX_ROUNDS}라운드 동안 토론했지만, 다수(${finalAgreeCount}/${participants.length})가 동의한 뒤에도 소수 측이 원 질문에 결정적인([핵심]) 반론을 굽히지 않아 완전한 합의에 이르지 못했습니다. 이 핵심 반론의 내용과 근거를 답변 끝에 명확히 밝혀, 사용자가 직접 판단할 수 있게 하세요.`
+        : `${MAX_ROUNDS}라운드 동안 토론했지만 완전한 합의에는 이르지 못했습니다 (최종 ${finalAgreeCount}/${participants.length}명 동의). 남은 이견을 명확히 밝혀주세요.`;
     const positionsBlock = participants.map(p=>`[${p.label}의 최종 입장]\n${current[p.id]}`).join('\n\n');
     const allNames = participants.map(p=>p.label).join(', ');
     const synthesisSearchClause = participants[0].hasSearch ? SEARCH_INSTRUCTION : NO_SEARCH_CAVEAT;
